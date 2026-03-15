@@ -85,11 +85,9 @@ public class DirectEditingTest extends FileTestBase {
                             dotest = true;
                         }
                         if (!dotest) {
-                            System.out.println("Skipped:" + classPathString);
                             continue;
                         }
-
-                        System.out.println("Recompiling:" + classPathString + "...");
+                        
                         try {
                             en.toSource(swf.getAbcIndex(), htw, abc.script_info.get(s).traits.traits, new ConvertData(), ScriptExportMode.AS, false, false, false);
                             htw.finishHilights();

@@ -16,6 +16,7 @@
  */
 package com.jpexs.decompiler.flash.abc.avm2.parser.script;
 
+import com.jpexs.decompiler.flash.SWF;
 import com.jpexs.decompiler.flash.abc.ABC;
 import com.jpexs.decompiler.flash.abc.avm2.parser.AVM2ParseException;
 import com.jpexs.decompiler.flash.simpleparser.CatchScope;
@@ -375,15 +376,24 @@ public class ActionScript3SimpleParser implements SimpleParser {
                     continue;
                 }
             } else {
-                if (!expected(errors, s, lexer.yyline(), SymbolGroup.IDENTIFIER, SymbolType.NAMESPACE, SymbolType.MULTIPLY)) {
+                if (!expected(errors, s, lexer.yyline(), SymbolGroup.IDENTIFIER, SymbolType.NAMESPACE, SymbolType.MULTIPLY,
+                        SymbolType.PUBLIC, SymbolType.PROTECTED, SymbolType.PRIVATE, SymbolType.INTERNAL
+                    )) {
                     lexer.pushback(s);
                     return new Path();
                 }
+                if (s.isType(SymbolType.PUBLIC, SymbolType.PROTECTED, SymbolType.PRIVATE, SymbolType.INTERNAL)) {
+                    nsKeyword = s;
+                }
+                
                 lastName = s.value.toString();
                 identPos = s.position;
             }
             s = lex();
             if (s.type == SymbolType.NAMESPACESUFFIX) {
+                if (nsKeyword != null) {
+                    errors.add(new SimpleParseException(nsKeyword.value + " not expected in this situation", lexer.yyline(), nsKeyword.position));
+                }
                 lastName += "#" + s.value;
                 s = lex();
             }
@@ -2371,7 +2381,11 @@ public class ActionScript3SimpleParser implements SimpleParser {
         List<VariableOrScope> vars = new ArrayList<>();
         List<DottedChain> importedClasses = new ArrayList<>();
         List<NamespaceItem> openedNamespaces = new ArrayList<>();
-        for (String name : abc.getSwf().getAbcIndex().getPackageObjects(DottedChain.TOPLEVEL)) {
+        SWF swf = abc.getSwf();
+        if (swf == null) {
+            return;
+        }
+        for (String name : swf.getAbcIndex().getPackageObjects(DottedChain.TOPLEVEL)) {
             externalTypes.add(new Path(name));
         }
         externalTypes.add(new Path("__AS3__", "vec", "Vector"));

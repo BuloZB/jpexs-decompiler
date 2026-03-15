@@ -123,6 +123,7 @@ import java.io.IOException;
 import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.Collections;
+import java.util.Comparator;
 import java.util.HashMap;
 import java.util.LinkedHashSet;
 import java.util.List;
@@ -160,6 +161,7 @@ import javax.swing.tree.TreePath;
 import jsyntaxpane.DefaultSyntaxKit;
 import jsyntaxpane.Token;
 import jsyntaxpane.TokenType;
+import natorder.NaturalOrderComparator;
 
 /**
  * @author JPEXS
@@ -249,12 +251,12 @@ public class ABCPanel extends JPanel implements ItemListener, SearchListener<Scr
             return new ActionScriptSearch().searchAs3(openable, txt, ignoreCase, regexp, pcode, new ScriptSearchListener() {
                 @Override
                 public void onDecompile(int pos, int total, String name) {
-                    Main.startWork(workText + " \"" + txt + "\", " + decAdd + " - (" + pos + "/" + total + ") " + name + "... ", worker);
+                    Main.startWork(workText + " \"" + txt + "\", " + decAdd + " - (" + pos + "/" + total + ") " + name + "... ", worker, false);
                 }
 
                 @Override
                 public void onSearch(int pos, int total, String name) {
-                    Main.startWork(workText + " \"" + txt + "\" - (" + pos + "/" + total + ") " + name + "... ", worker);
+                    Main.startWork(workText + " \"" + txt + "\" - (" + pos + "/" + total + ") " + name + "... ", worker, false);
                 }
             }, scope);
         }
@@ -345,6 +347,8 @@ public class ABCPanel extends JPanel implements ItemListener, SearchListener<Scr
             sessionIdToLoadedVariableNode.get(sessionId).clear();
         }
 
+        private boolean sort;
+
         @Override
         public int hashCode() {
             int hash = 3;
@@ -403,8 +407,8 @@ public class ABCPanel extends JPanel implements ItemListener, SearchListener<Scr
         }
 
         private void reloadChildren() {
-            childs = new ArrayList<>();
-            traits = new ArrayList<>();
+            List<VariableNode> newChilds = new ArrayList<>();
+            List<Variable> newTraits = new ArrayList<>();
 
             if ("".equals(var.name)) {
                 return;
@@ -447,12 +451,25 @@ public class ABCPanel extends JPanel implements ItemListener, SearchListener<Scr
 
                 if (!isTraits(igv.childs.get(i))) {
                     Long parentObjectId = varToObjectId(varInsideGetter);
-                    childs.add(new VariableNode(currentSession, treeTable, as3, path, level + 1, igv.childs.get(i), parentObjectId, curTrait));
+                    newChilds.add(new VariableNode(currentSession, treeTable, as3, path, level + 1, igv.childs.get(i), parentObjectId, curTrait, sort));
                 } else {
                     curTrait = igv.childs.get(i);
-                    traits.add(curTrait);
+                    newTraits.add(curTrait);
                 }
             }
+            
+            if (sort) {
+                NaturalOrderComparator naturalOrder = new NaturalOrderComparator();
+                newChilds.sort(new Comparator<VariableNode>() {
+                    @Override
+                    public int compare(VariableNode o1, VariableNode o2) {
+                        return naturalOrder.compare(o1.var.name, o2.var.name);
+                    }                    
+                });
+            }
+            
+            this.childs = newChilds;
+            this.traits = newTraits;
         }
 
         private void ensureLoaded() {
@@ -578,7 +595,7 @@ public class ABCPanel extends JPanel implements ItemListener, SearchListener<Scr
             return childs.size();
         }
 
-        public VariableNode(DebuggerSession session, MyTreeTable treeTable, boolean as3, List<VariableNode> parentPath, int level, Variable var, Long parentObjectId, Variable trait) {
+        public VariableNode(DebuggerSession session, MyTreeTable treeTable, boolean as3, List<VariableNode> parentPath, int level, Variable var, Long parentObjectId, Variable trait, boolean sort) {
             this.var = var;
             this.varInsideGetter = var;
             this.parentObjectId = parentObjectId;
@@ -590,9 +607,10 @@ public class ABCPanel extends JPanel implements ItemListener, SearchListener<Scr
             this.session = session;
             this.treeTable = treeTable;
             this.as3 = as3;
+            this.sort = sort;
         }
 
-        public VariableNode(DebuggerSession session, MyTreeTable treeTable, boolean as3, List<VariableNode> parentPath, int level, Variable var, Long parentObjectId, Variable trait, List<VariableNode> subvars) {
+        public VariableNode(DebuggerSession session, MyTreeTable treeTable, boolean as3, List<VariableNode> parentPath, int level, Variable var, Long parentObjectId, Variable trait, List<VariableNode> subvars, boolean sort) {
             this.var = var;
             this.varInsideGetter = var;
             this.parentObjectId = parentObjectId;
@@ -611,6 +629,7 @@ public class ABCPanel extends JPanel implements ItemListener, SearchListener<Scr
             this.session = session;
             this.treeTable = treeTable;
             this.as3 = as3;
+            this.sort = sort;
         }
     }
 
@@ -646,17 +665,32 @@ public class ABCPanel extends JPanel implements ItemListener, SearchListener<Scr
         private static final int STRUCTURE_CHANGED = 3;
 
         private final MyTreeTable treeTable;
+        
+        private final boolean sort;
 
-        public VariablesTableModel(DebuggerSession session, boolean as3, MyTreeTable treeTable, List<Variable> vars, List<Long> parentIds) {
+        public VariablesTableModel(DebuggerSession session, boolean as3, MyTreeTable treeTable, List<Variable> vars, List<Long> parentIds, boolean sort) {
             this.treeTable = treeTable;
 
             List<VariableNode> childs = new ArrayList<>();
 
             for (int i = 0; i < vars.size(); i++) {
-                childs.add(new VariableNode(session, treeTable, as3, new ArrayList<>(), 1, vars.get(i), parentIds == null ? 0L : parentIds.get(i), null));
+                childs.add(new VariableNode(session, treeTable, as3, new ArrayList<>(), 1, vars.get(i), parentIds == null ? 0L : parentIds.get(i), null, sort));
             }
-            root = new VariableNode(session, treeTable, as3, new ArrayList<>(), 0, null, 0L, null, childs);
+           
+            if (sort) {
+                NaturalOrderComparator naturalOrder = new NaturalOrderComparator();
+                childs.sort(new Comparator<VariableNode>() {
+                    @Override
+                    public int compare(VariableNode o1, VariableNode o2) {
+                        return naturalOrder.compare(o1.var.name, o2.var.name);
+                    }                    
+                });
+            }
+            
+            
+            root = new VariableNode(session, treeTable, as3, new ArrayList<>(), 0, null, 0L, null, childs, sort);
             root.loaded = true;
+            this.sort = sort;
         }
 
         @Override
@@ -1187,7 +1221,7 @@ public class ABCPanel extends JPanel implements ItemListener, SearchListener<Scr
                     swfRef.setVal(ci.abc.getSwf());
                 }
 
-                String scriptNamePrintable = DottedChain.parseWithSuffix(scriptName.toString()).toPrintableString(new LinkedHashSet<>(), ci.abc.getSwf(), true);
+                String scriptNamePrintable = DottedChain.parseWithSuffix(scriptName.toString()).toPrintableString(new LinkedHashSet<>(), swfRef.getVal(), true);
 
                 if (swfRef.getVal() == abc.getSwf()) {
                     hilightScript(getOpenable(), scriptNamePrintable);
@@ -1646,6 +1680,7 @@ public class ABCPanel extends JPanel implements ItemListener, SearchListener<Scr
         navIconsPanel.setLayout(new BoxLayout(navIconsPanel, BoxLayout.X_AXIS));
         final JToggleButton sortButton = new JToggleButton(View.getIcon("sort16"));
         sortButton.setMargin(new Insets(3, 3, 3, 3));
+        sortButton.setToolTipText(AppStrings.translate("sort.alphabetically"));
         navIconsPanel.add(sortButton);
         //JLabel navigatorLabel = new JLabel(AppStrings.translate("traits"), JLabel.CENTER);
         //navigatorPanel.add(navigatorLabel, BorderLayout.NORTH);
