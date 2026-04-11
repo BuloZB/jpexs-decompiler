@@ -844,18 +844,22 @@ public final class Configuration {
     
     @ConfigurationDefaultBoolean(false)
     @ConfigurationCategory("display")
+    @ConfigurationRemoved
     public static ConfigurationItem<Boolean> reduceAntialiasConflationByScalingForDisplay = null;
         
     @ConfigurationDefaultInt(4)
     @ConfigurationCategory("display")
+    @ConfigurationRemoved
     public static ConfigurationItem<Integer> reduceAntialiasConflationByScalingValueForDisplay = null;
         
     @ConfigurationDefaultBoolean(false)
     @ConfigurationCategory("export")
+    @ConfigurationRemoved
     public static ConfigurationItem<Boolean> reduceAntialiasConflationByScalingForExport = null;
         
-    @ConfigurationDefaultInt(10)
+    @ConfigurationDefaultInt(4)
     @ConfigurationCategory("export")
+    @ConfigurationRemoved
     public static ConfigurationItem<Integer> reduceAntialiasConflationByScalingValueForExport = null;
     
     @ConfigurationDefaultBoolean(true)
@@ -1208,6 +1212,30 @@ public final class Configuration {
     @ConfigurationDefaultBoolean(true)
     @ConfigurationCategory("export")
     public static ConfigurationItem<Boolean> svgExportGaussianBlur = null;
+    
+    @ConfigurationDefaultBoolean(false)
+    @ConfigurationCategory("export")
+    public static ConfigurationItem<Boolean> exportFlaAs3DisableScriptLayer = null;
+    
+    @ConfigurationDefaultBoolean(false)
+    @ConfigurationCategory("display")
+    public static ConfigurationItem<Boolean> useMsaaForDisplay = null;
+        
+    @ConfigurationDefaultBoolean(false)
+    @ConfigurationCategory("export")
+    public static ConfigurationItem<Boolean> useMsaaForExport = null;
+    
+    @ConfigurationDefaultInt(4)
+    @ConfigurationCategory("display")
+    public static ConfigurationItem<Integer> msaaGridForDisplay = null;
+        
+    @ConfigurationDefaultInt(4)
+    @ConfigurationCategory("export")
+    public static ConfigurationItem<Integer> msaaGridForExport = null;
+    
+    @ConfigurationDefaultBoolean(true)
+    @ConfigurationCategory("display")
+    public static ConfigurationItem<Boolean> useMinimumStrokeWidth1Px = null;
     
     private static Map<String, String> configurationDescriptions = new LinkedHashMap<>();
     private static Map<String, String> configurationTitles = new LinkedHashMap<>();
@@ -1861,20 +1889,5 @@ public final class Configuration {
         }
 
         return null;
-    }
-    
-    public static int calculateRealAaScale(int imageWidth, int imageHeight, double zoom, int initialAaScale) {
-        
-        final int MAX_IMAGE_DIMENSION = 10000;
-        
-        int aaScale = initialAaScale;
-        while (
-                aaScale > 1 
-                && (((long) imageWidth * zoom * aaScale / SWF.unitDivisor) > MAX_IMAGE_DIMENSION 
-                || ((long) imageHeight * zoom * aaScale / SWF.unitDivisor) > MAX_IMAGE_DIMENSION)
-        ) {
-            aaScale--;
-        }
-        return aaScale;
-    }
+    }    
 }

@@ -1474,6 +1474,8 @@ public class Main {
                     private boolean yestoall = false;
 
                     private boolean notoall = false;
+                    
+                    private List<String> processedUrls = new ArrayList<>();
 
                     private SWF open(InputStream is, String file, String fileTitle) throws IOException, InterruptedException {
                         final CancellableWorker worker = this;
@@ -1514,7 +1516,13 @@ public class Main {
                             }
                         }, Configuration.parallelSpeedUp.get(), false, true, new UrlResolver() {
                             @Override
+                            public boolean doIgnoreUrl(String basePath, String url) {
+                                return processedUrls.contains(basePath + "|" + url);
+                            }                                                        
+                            
+                            @Override
                             public SWF resolveUrl(String file, final String url) {
+                                processedUrls.add(file + "|" + url);
                                 loadedUrls.add(url);
                                 File selFile = null;
                                 int opt = -1;
@@ -3584,7 +3592,9 @@ public class Main {
         AppStrings.setResourceClass(MainFrame.class);
         initLogging(Configuration._debugMode.get());
 
-        initJna();
+        if (!(args.length == 2 && "-config".equals(args[0]))) { //To be able to reset JNA directory with -config, if invalid
+            initJna();       
+        }
         initLang();
 
         if (Configuration.cacheOnDisk.get()) {

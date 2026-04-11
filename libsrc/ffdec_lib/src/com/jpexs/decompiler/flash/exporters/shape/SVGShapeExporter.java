@@ -17,6 +17,7 @@
 package com.jpexs.decompiler.flash.exporters.shape;
 
 import com.jpexs.decompiler.flash.SWF;
+import com.jpexs.decompiler.flash.configuration.Configuration;
 import com.jpexs.decompiler.flash.exporters.commonshape.Matrix;
 import com.jpexs.decompiler.flash.exporters.commonshape.SVGExporter;
 import com.jpexs.decompiler.flash.tags.base.ImageTag;
@@ -152,7 +153,7 @@ public class SVGShapeExporter extends DefaultSVGShapeExporter {
         gradient.setAttribute("id", gradientId);
         path.setAttribute("stroke", "none");
         path.setAttribute("fill", "url(#" + gradientId + ")");
-        path.setAttribute("fill-rule", "evenodd");
+        path.setAttribute("fill-rule", windingRule == ShapeTag.WIND_NONZERO ? "nonzero" : "evenodd");
         exporter.addToDefs(gradient);
     }
 
@@ -226,6 +227,7 @@ public class SVGShapeExporter extends DefaultSVGShapeExporter {
         finalizePath();
         String patternId = getPattern(bitmapId, matrix, colorTransform, smooth);
         path.setAttribute("ffdec:fill-bitmapId", "" + bitmapId);
+        path.setAttribute("fill-rule", windingRule == ShapeTag.WIND_NONZERO ? "nonzero" : "evenodd");        
         if (patternId != null) {
             path.setAttribute("style", "fill:url(#" + patternId + ")");
             return;
@@ -237,11 +239,13 @@ public class SVGShapeExporter extends DefaultSVGShapeExporter {
     public void lineStyle(double thickness, RGB color, boolean pixelHinting, String scaleMode, int startCaps, int endCaps, int joints, float miterLimit, boolean noClose) {
         finalizePath();
         
-        //always display minimum stroke of 1 pixel, no matter how zoomed it is
-        if (thickness * displayZoom * thicknessScale < 1 * SWF.unitDivisor) {
-            path.setAttribute("ffdec:has-small-stroke", "true");
-            path.setAttribute("ffdec:original-stroke-width", Double.toString(thickness * displayZoom / SWF.unitDivisor));
-            thickness = 1 * SWF.unitDivisor / displayZoom / thicknessScale;
+        if (Configuration.useMinimumStrokeWidth1Px.get()) {
+            //display minimum stroke of 1 pixel, no matter how zoomed it is
+            if (thickness * displayZoom * thicknessScale < 1 * SWF.unitDivisor) {
+                path.setAttribute("ffdec:has-small-stroke", "true");
+                path.setAttribute("ffdec:original-stroke-width", Double.toString(thickness * displayZoom / SWF.unitDivisor));
+                thickness = 1 * SWF.unitDivisor / displayZoom / thicknessScale;
+            }
         }
         
         thickness *= zoom / SWF.unitDivisor;        

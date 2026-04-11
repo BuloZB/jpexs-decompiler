@@ -28,6 +28,7 @@ import com.jpexs.decompiler.flash.importers.ShapeImporter;
 import com.jpexs.decompiler.flash.importers.svg.css.CssParseException;
 import com.jpexs.decompiler.flash.importers.svg.css.CssParser;
 import com.jpexs.decompiler.flash.importers.svg.css.CssSelectorToXPath;
+import com.jpexs.decompiler.flash.math.BezierEdge;
 import com.jpexs.decompiler.flash.tags.DefineMorphShape2Tag;
 import com.jpexs.decompiler.flash.tags.DefineShape4Tag;
 import com.jpexs.decompiler.flash.tags.ExportAssetsTag;
@@ -53,6 +54,7 @@ import com.jpexs.decompiler.flash.types.shaperecords.SHAPERECORD;
 import com.jpexs.decompiler.flash.types.shaperecords.StraightEdgeRecord;
 import com.jpexs.decompiler.flash.types.shaperecords.StyleChangeRecord;
 import com.jpexs.helpers.Helper;
+import com.jpexs.helpers.Reference;
 import com.jpexs.helpers.SerializableImage;
 import java.awt.Color;
 import java.awt.geom.Rectangle2D;
@@ -105,11 +107,12 @@ public class SvgImporter {
     private Rectangle2D.Double viewBox;
 
     private double width;
-    
+
     private double height;
-    
+
     /**
      * Constructor.
+     *
      * @param st Shape tag
      * @param svgXml SVG XML
      * @return Imported tag
@@ -120,6 +123,7 @@ public class SvgImporter {
 
     /**
      * Constructor.
+     *
      * @param mst Morph shape tag
      * @param svgXml SVG XML
      * @return Imported tag
@@ -130,6 +134,7 @@ public class SvgImporter {
 
     /**
      * Constructor.
+     *
      * @param st Shape tag
      * @param svgXml SVG XML
      * @param fill Fill flag
@@ -141,6 +146,7 @@ public class SvgImporter {
 
     /**
      * Constructor.
+     *
      * @param mst Morph shape tag
      * @param svgXml SVG XML
      * @param fill Fill flag
@@ -152,6 +158,7 @@ public class SvgImporter {
 
     /**
      * Constructor.
+     *
      * @param startShape Start shape tag
      * @param endShape End shape tag
      * @param svgXml SVG XML
@@ -164,6 +171,7 @@ public class SvgImporter {
 
     /**
      * Constructor.
+     *
      * @param st Start shape tag
      * @param endShape End shape tag
      * @param svgXml SVG XML
@@ -298,7 +306,7 @@ public class SvgImporter {
                 double ratioY = height / viewBox.height;
                 transform = transform.preConcatenate(Matrix.getScaleInstance(ratioX, ratioY));
             }
-                        
+
             processSvgObject(idMap, shapeNum, shapes, rootElement, transform, style, morphShape, cachedBitmaps, false);
             if (rootElement.hasAttribute("ffdec:objectType")
                     && "morphshape".equals(rootElement.getAttribute("ffdec:objectType"))
@@ -335,9 +343,10 @@ public class SvgImporter {
 
         return (Tag) st;
     }
-    
+
     /**
      * Applies animation to the element.
+     *
      * @param element Element
      * @return True if animation was applied
      */
@@ -445,8 +454,9 @@ public class SvgImporter {
     }
 
     /**
-     * Populates IDs.
-     * Generates id-element map, because getElementById does not work in some cases (namespaces?)
+     * Populates IDs. Generates id-element map, because getElementById does not
+     * work in some cases (namespaces?)
+     *
      * @param el Element
      * @param out Output map
      */
@@ -612,6 +622,69 @@ public class SvgImporter {
         }
     }
 
+    private void addStraightRecord(List<SHAPERECORD> newRecords, int deltaX, int deltaY) {
+        StraightEdgeRecord ser = new StraightEdgeRecord();
+        ser.deltaX = deltaX;
+        ser.deltaY = deltaY;
+        ser.generalLineFlag = true;
+        ser.simplify();
+        ser.calculateBits();
+
+        //Line is too long, split into half
+        if (ser.numBits > StraightEdgeRecord.MAX_NUM_BITS) {
+            int deltaX1 = deltaX / 2;
+            int deltaY1 = deltaY / 2;
+            int deltaX2 = deltaX1;
+            int deltaY2 = deltaY1;
+
+            if (deltaX1 + deltaX2 < deltaX) {
+                deltaX2++;
+            }
+            if (deltaY1 + deltaY2 < deltaY) {
+                deltaY2++;
+            }
+
+            addStraightRecord(newRecords, deltaX1, deltaY1);
+            addStraightRecord(newRecords, deltaX2, deltaY2);
+            return;
+        }
+
+        newRecords.add(ser);
+    }
+
+    private void addCurvedRecord(List<SHAPERECORD> newRecords, int controlDeltaX, int controlDeltaY, int anchorDeltaX, int anchorDeltaY) {
+        CurvedEdgeRecord cer = new CurvedEdgeRecord();
+        cer.controlDeltaX = controlDeltaX;
+        cer.controlDeltaY = controlDeltaY;
+        cer.anchorDeltaX = anchorDeltaX;
+        cer.anchorDeltaY = anchorDeltaY;
+        cer.calculateBits();
+
+        //Curve is too long, split into half
+        if (cer.numBits > CurvedEdgeRecord.MAX_NUM_BITS) {
+            BezierEdge be = new BezierEdge(0, 0, cer.controlDeltaX, cer.controlDeltaY, cer.controlDeltaX + cer.anchorDeltaX, cer.controlDeltaY + cer.anchorDeltaY);
+            Reference<BezierEdge> leftRef = new Reference<>(null);
+            Reference<BezierEdge> rightRef = new Reference<>(null);
+            be.split(0.5, leftRef, rightRef);
+            BezierEdge left = leftRef.getVal();
+            BezierEdge right = rightRef.getVal();
+            int controlDeltaX1 = (int) Math.round(left.points.get(1).getX());
+            int controlDeltaY1 = (int) Math.round(left.points.get(1).getY());
+            int anchorDeltaX1 = (int) Math.round(left.points.get(2).getX()) - controlDeltaX1;
+            int anchorDeltaY1 = (int) Math.round(left.points.get(2).getY()) - controlDeltaY1;
+            int controlDeltaX2 = (int) Math.round(right.points.get(1).getX()) - controlDeltaX1 - anchorDeltaX1;
+            int controlDeltaY2 = (int) Math.round(right.points.get(1).getY()) - controlDeltaY1 - anchorDeltaY1;
+            int anchorDeltaX2 = controlDeltaX + anchorDeltaX - controlDeltaX1 - anchorDeltaX1 - controlDeltaX2;
+            int anchorDeltaY2 = controlDeltaY + anchorDeltaY - controlDeltaY1 - anchorDeltaY1 - controlDeltaY2;
+
+            addCurvedRecord(newRecords, controlDeltaX1, controlDeltaY1, anchorDeltaX1, anchorDeltaY1);
+            addCurvedRecord(newRecords, controlDeltaX2, controlDeltaY2, anchorDeltaX2, anchorDeltaY2);
+            return;
+        }
+
+        newRecords.add(cer);
+    }
+
     private void processCommands(int shapeNum, SHAPEWITHSTYLE shapes, List<PathCommand> commands, Matrix transform, SvgStyle style, boolean morphShape, boolean shape2) {
 
         if ("nonzero".equals(style.getFillRule())) {
@@ -706,85 +779,69 @@ public class SvgImporter {
                     empty = true;
                     break;
                 case 'Z':
-                    StraightEdgeRecord serz = new StraightEdgeRecord();
                     p = startPoint;
-                    serz.deltaX = (int) Math.round(p.x - prevPoint.x);
-                    serz.deltaY = (int) Math.round(p.y - prevPoint.y);
-                    prevPoint = new Point(prevPoint.x + serz.deltaX, prevPoint.y + serz.deltaY);
-                    serz.generalLineFlag = true;
-                    serz.simplify();
-                    serz.calculateBits();
-                    newRecords.add(serz);
+                    int deltaX = (int) Math.round(p.x - prevPoint.x);
+                    int deltaY = (int) Math.round(p.y - prevPoint.y);
+                    prevPoint = new Point(prevPoint.x + deltaX, prevPoint.y + deltaY);
+                    addStraightRecord(newRecords, deltaX, deltaY);
                     if (lineStyle2Obj != null) {
                         lineStyle2Obj.noClose = false;
                     }
                     empty = true;
                     break;
                 case 'L':
-                    StraightEdgeRecord serl = new StraightEdgeRecord();
                     x = command.params[0];
                     y = command.params[1];
 
                     p = transform2.transform(x, y);
-                    serl.deltaX = (int) Math.round(p.x - prevPoint.x);
-                    serl.deltaY = (int) Math.round(p.y - prevPoint.y);
-                    prevPoint = new Point(prevPoint.x + serl.deltaX, prevPoint.y + serl.deltaY);
-                    serl.generalLineFlag = true;
-                    serl.simplify();
-                    serl.calculateBits();
-                    newRecords.add(serl);
+                    deltaX = (int) Math.round(p.x - prevPoint.x);
+                    deltaY = (int) Math.round(p.y - prevPoint.y);
+                    prevPoint = new Point(prevPoint.x + deltaX, prevPoint.y + deltaY);
+                    addStraightRecord(newRecords, deltaX, deltaY);
                     empty = false;
                     break;
                 case 'H':
-                    StraightEdgeRecord serh = new StraightEdgeRecord();
                     x = command.params[0];
 
                     p = transform2.transform(x, y);
-                    serh.deltaX = (int) Math.round(p.x - prevPoint.x);
+                    deltaX = (int) Math.round(p.x - prevPoint.x);
                     //deltaX is not enough as transformation can make deltaY difference
-                    serh.deltaY = (int) Math.round(p.y - prevPoint.y);
-                    prevPoint = new Point(prevPoint.x + serh.deltaX, prevPoint.y + serh.deltaY);
-                    serh.generalLineFlag = true;
-                    serh.simplify();
-                    serh.calculateBits();
-                    newRecords.add(serh);
+                    deltaY = (int) Math.round(p.y - prevPoint.y);
+                    prevPoint = new Point(prevPoint.x + deltaX, prevPoint.y + deltaY);
+                    addStraightRecord(newRecords, deltaX, deltaY);
                     empty = false;
                     break;
                 case 'V':
-                    StraightEdgeRecord serv = new StraightEdgeRecord();
                     y = command.params[0];
 
                     p = transform2.transform(x, y);
 
                     //deltaY is not enough as transformation can make deltaX difference
-                    serv.deltaX = (int) Math.round(p.x - prevPoint.x);
-                    serv.deltaY = (int) Math.round(p.y - prevPoint.y);
-                    prevPoint = new Point(prevPoint.x + serv.deltaX, prevPoint.y + serv.deltaY);
-                    serv.generalLineFlag = true;
-                    serv.simplify();
-                    serv.calculateBits();
-                    newRecords.add(serv);
+                    deltaX = (int) Math.round(p.x - prevPoint.x);
+                    deltaY = (int) Math.round(p.y - prevPoint.y);
+                    prevPoint = new Point(prevPoint.x + deltaX, prevPoint.y + deltaY);
+                    addStraightRecord(newRecords, deltaX, deltaY);
                     empty = false;
                     break;
                 case 'Q':
-                    CurvedEdgeRecord cer = new CurvedEdgeRecord();
                     x = command.params[0];
                     y = command.params[1];
 
                     p = transform2.transform(x, y);
-                    cer.controlDeltaX = (int) Math.round(p.x - prevPoint.x);
-                    cer.controlDeltaY = (int) Math.round(p.y - prevPoint.y);
-                    prevPoint = new Point(prevPoint.x + cer.controlDeltaX, prevPoint.y + cer.controlDeltaY);
+                    int controlDeltaX = (int) Math.round(p.x - prevPoint.x);
+                    int controlDeltaY = (int) Math.round(p.y - prevPoint.y);
+
+                    prevPoint = new Point(prevPoint.x + controlDeltaX, prevPoint.y + controlDeltaY);
 
                     x = command.params[2];
                     y = command.params[3];
 
                     p = transform2.transform(x, y);
-                    cer.anchorDeltaX = (int) Math.round(p.x - prevPoint.x);
-                    cer.anchorDeltaY = (int) Math.round(p.y - prevPoint.y);
-                    prevPoint = new Point(prevPoint.x + cer.anchorDeltaX, prevPoint.y + cer.anchorDeltaY);
-                    cer.calculateBits();
-                    newRecords.add(cer);
+                    int anchorDeltaX = (int) Math.round(p.x - prevPoint.x);
+                    int anchorDeltaY = (int) Math.round(p.y - prevPoint.y);
+                    prevPoint = new Point(prevPoint.x + anchorDeltaX, prevPoint.y + anchorDeltaY);
+
+                    addCurvedRecord(newRecords, controlDeltaX, controlDeltaY, anchorDeltaX, anchorDeltaY);
                     empty = false;
                     break;
                 case 'C':
@@ -811,18 +868,17 @@ public class SvgImporter {
 
                     List<Double> quadCoordinates = new CubicToQuad().cubicToQuad(pStart.x, pStart.y, pControl1.x, pControl1.y, pControl2.x, pControl2.y, p.x, p.y, 1);
                     for (int i = 2; i < quadCoordinates.size();) {
-                        CurvedEdgeRecord cerc = new CurvedEdgeRecord();
                         p = new Point(quadCoordinates.get(i++), quadCoordinates.get(i++));
-                        cerc.controlDeltaX = (int) Math.round(p.x - prevPoint.x);
-                        cerc.controlDeltaY = (int) Math.round(p.y - prevPoint.y);
-                        prevPoint = new Point(prevPoint.x + cerc.controlDeltaX, prevPoint.y + cerc.controlDeltaY);
+                        int subControlDeltaX = (int) Math.round(p.x - prevPoint.x);
+                        int subControlDeltaY = (int) Math.round(p.y - prevPoint.y);
+                        prevPoint = new Point(prevPoint.x + subControlDeltaX, prevPoint.y + subControlDeltaY);
 
                         p = new Point(quadCoordinates.get(i++), quadCoordinates.get(i++));
-                        cerc.anchorDeltaX = (int) Math.round(p.x - prevPoint.x);
-                        cerc.anchorDeltaY = (int) Math.round(p.y - prevPoint.y);
-                        prevPoint = new Point(prevPoint.x + cerc.anchorDeltaX, prevPoint.y + cerc.anchorDeltaY);
-                        cerc.calculateBits();
-                        newRecords.add(cerc);
+                        int subAnchorDeltaX = (int) Math.round(p.x - prevPoint.x);
+                        int subAnchorDeltaY = (int) Math.round(p.y - prevPoint.y);
+                        prevPoint = new Point(prevPoint.x + subAnchorDeltaX, prevPoint.y + subAnchorDeltaY);
+
+                        addCurvedRecord(newRecords, subControlDeltaX, subControlDeltaY, subAnchorDeltaX, subAnchorDeltaY);
                     }
 
                     empty = false;
@@ -1459,7 +1515,7 @@ public class SvgImporter {
 
     public Rectangle2D.Double getViewBox() {
         return viewBox;
-    }        
+    }
 
     //Stub for w3 test. TODO: refactor and move to test directory. It's here because of easy access - compiling single file
     private static void svgTest(String name) throws IOException, InterruptedException {
@@ -1496,6 +1552,7 @@ public class SvgImporter {
 
     /**
      * Test for SVG.
+     *
      * @param args The command line arguments
      * @throws IOException On I/O error
      * @throws InterruptedException On interrupt
@@ -1787,7 +1844,7 @@ public class SvgImporter {
         return Math.atan2(dy, dx);
     }
 
-    private void applyFillGradients(SvgFill fill, FILLSTYLE fillStyle, RECT bounds, StyleChangeRecord scr, Matrix transform, int shapeNum, SvgStyle style) {
+    private void applyFillGradients(SvgFill fill, FILLSTYLE fillStyle, RECT bounds, StyleChangeRecord scr, Matrix transform, int shapeNum, SvgStyle style, double opacity) {
         if (fill == null || fillStyle == null) {
             return;
         }
@@ -1806,7 +1863,7 @@ public class SvgImporter {
                 double y2 = parseCoordinate(lgfill.y2, 1);
 
                 Matrix tMatrix = new Matrix();
-                if (lgfill.gradientUnits == SvgGradientUnits.OBJECT_BOUNDING_BOX) {                                                                                
+                if (lgfill.gradientUnits == SvgGradientUnits.OBJECT_BOUNDING_BOX) {
                     Matrix xyMatrix = new Matrix();
                     xyMatrix.scaleX = (x2 - x1) * SWF.unitDivisor;
                     xyMatrix.rotateSkew0 = (y2 - y1) * SWF.unitDivisor;
@@ -1835,14 +1892,14 @@ public class SvgImporter {
                             .concatenate(scaleMatrix);
                 } else {
                     //SvgGradientUnits.USER_SPACE_ON_USE
-                    
+
                     x1 *= SWF.unitDivisor;
                     y1 *= SWF.unitDivisor;
                     x2 *= SWF.unitDivisor;
-                    y2 *= SWF.unitDivisor;                                        
-                    
+                    y2 *= SWF.unitDivisor;
+
                     double L = 16384.0;
-                    
+
                     double ux = x2 - x1;
                     double uy = y2 - y1;
                     double du = Math.hypot(x2 - x1, y2 - y1);
@@ -1850,20 +1907,20 @@ public class SvgImporter {
                     double my = (y1 + y2) / 2.0;
                     double ax = ux / du;
                     double ay = uy / du;
-                    
+
                     double k = du / (2 * L);
-                    
+
                     double nx = -ay;
                     double ny = ax;
-                                        
+
                     double newScaleX = k * (gradientMatrix.scaleX * ax + gradientMatrix.rotateSkew1 * ay);
                     double newRotateSkew1 = k * (gradientMatrix.scaleX * nx + gradientMatrix.rotateSkew1 * ny);
                     double newTranslateX = gradientMatrix.scaleX * mx + gradientMatrix.rotateSkew1 * my + gradientMatrix.translateX;
 
                     double newRotateSkew0 = k * (gradientMatrix.rotateSkew0 * ax + gradientMatrix.scaleY * ay);
                     double newScaleY = k * (gradientMatrix.rotateSkew0 * nx + gradientMatrix.scaleY * ny);
-                    double newTranslateY  = gradientMatrix.rotateSkew0 * mx + gradientMatrix.scaleY * my + gradientMatrix.translateY;
-                                        
+                    double newTranslateY = gradientMatrix.rotateSkew0 * mx + gradientMatrix.scaleY * my + gradientMatrix.translateY;
+
                     tMatrix = new Matrix(newScaleX, newScaleY, newRotateSkew0, newRotateSkew1, newTranslateX, newTranslateY);
                 }
                 fillStyle.gradientMatrix = tMatrix.toMATRIX();
@@ -1950,7 +2007,7 @@ public class SvgImporter {
             for (int i = 0; i < recCount; i++) {
                 SvgStop stop = gfill.stops.get(i);
                 Color color = stop.color;
-                color = new Color(color.getRed(), color.getGreen(), color.getBlue(), (int) Math.round(color.getAlpha() * style.getOpacity()));
+                color = new Color(color.getRed(), color.getGreen(), color.getBlue(), (int) Math.round(color.getAlpha() * opacity));
                 fillStyle.gradient.gradientRecords[i] = new GRADRECORD();
                 fillStyle.gradient.gradientRecords[i].inShape3 = shapeNum >= 3;
                 fillStyle.gradient.gradientRecords[i].color = getRGB(shapeNum, color);
@@ -1974,12 +2031,12 @@ public class SvgImporter {
     private void applyStyleGradients(RECT bounds, StyleChangeRecord scr, Matrix transform, int shapeNum, SvgStyle style) {
         SvgFill fill = style.getFillWithOpacity();
         if (fill != null && fill != SvgTransparentFill.INSTANCE) {
-            applyFillGradients(fill, scr.fillStyles.fillStyles[0], bounds, scr, transform, shapeNum, style);
+            applyFillGradients(fill, scr.fillStyles.fillStyles[0], bounds, scr, transform, shapeNum, style, style.getOpacity() * style.getFillOpacity());
         }
         SvgFill strokeFill = style.getStrokeFillWithOpacity();
         if (strokeFill != null) {
             if (shapeNum == 4 && scr.lineStyles.lineStyles2.length > 0 && scr.lineStyles.lineStyles2[0] instanceof LINESTYLE2) {
-                applyFillGradients(strokeFill, ((LINESTYLE2) scr.lineStyles.lineStyles2[0]).fillType, bounds, scr, transform, shapeNum, style);
+                applyFillGradients(strokeFill, ((LINESTYLE2) scr.lineStyles.lineStyles2[0]).fillType, bounds, scr, transform, shapeNum, style, style.getOpacity() * style.getStrokeOpacity());
             }
         }
     }
@@ -2029,7 +2086,7 @@ public class SvgImporter {
             ILINESTYLE lineStyle = shapeNum <= 3 ? new LINESTYLE() : new LINESTYLE2();
             lineStyle.setColor(getRGB(shapeNum, lineColor));
             double scale = Math.sqrt(Math.abs(transform.scaleX * transform.scaleY - transform.rotateSkew0 * transform.rotateSkew1));
-            
+
             lineStyle.setWidth((int) Math.round(style.getStrokeWidth() * scale * SWF.unitDivisor));
             SvgLineCap lineCap = style.getStrokeLineCap();
             SvgLineJoin lineJoin = style.getStrokeLineJoin();
@@ -2165,6 +2222,7 @@ public class SvgImporter {
 
     /**
      * Parses a number from a string.
+     *
      * @param value The string
      * @return The number
      */
@@ -2179,6 +2237,7 @@ public class SvgImporter {
 
     /**
      * Parses a number or percent from a string.
+     *
      * @param value The string
      * @return The number
      */

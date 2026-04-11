@@ -20,6 +20,7 @@ import com.jpexs.decompiler.flash.SWF;
 import com.jpexs.decompiler.flash.configuration.Configuration;
 import com.jpexs.decompiler.flash.exporters.FontExporter;
 import com.jpexs.decompiler.flash.exporters.GraphicsTextDrawable;
+import com.jpexs.decompiler.flash.exporters.RequiresNormalizedFonts;
 import com.jpexs.decompiler.flash.exporters.commonshape.ExportRectangle;
 import com.jpexs.decompiler.flash.exporters.commonshape.Matrix;
 import com.jpexs.decompiler.flash.exporters.commonshape.SVGExporter;
@@ -29,6 +30,7 @@ import com.jpexs.decompiler.flash.exporters.shape.CanvasShapeExporter;
 import com.jpexs.decompiler.flash.exporters.shape.SVGShapeExporter;
 import com.jpexs.decompiler.flash.helpers.HighlightedText;
 import com.jpexs.decompiler.flash.importers.TextImportResizeTextBoundsMode;
+import com.jpexs.decompiler.flash.tags.DefineEditTextTag;
 import com.jpexs.decompiler.flash.tags.text.JustifyAlignGlyphEntry;
 import com.jpexs.decompiler.flash.tags.text.TextAlign;
 import com.jpexs.decompiler.flash.tags.text.TextParseException;
@@ -680,6 +682,13 @@ public abstract class TextTag extends DrawableTag {
             ((GraphicsTextDrawable) image.getGraphics()).drawTextRecords(swf, textRecords, numText, textMatrix, transformation, colorTransform);
             return;
         }
+        
+        Map<Integer, FontTag> normalizedFonts = new HashMap<>();
+        if (image.getGraphics() instanceof RequiresNormalizedFonts) {
+            RequiresNormalizedFonts reqNormFonts = (RequiresNormalizedFonts) image.getGraphics();
+            normalizedFonts = reqNormFonts.getNormalizedFonts();
+        }
+        
         int textColor = 0;
         FontTag font = null;
         int textHeight = 12;
@@ -709,6 +718,11 @@ public abstract class TextTag extends DrawableTag {
             }
             if (rec.styleFlagsHasFont) {
                 FontTag font2 = rec.getFont(swf);
+                if (rec.fontId > -1) {
+                    if (normalizedFonts.containsKey(rec.fontId)) {
+                        font2 = normalizedFonts.get(rec.fontId);
+                    }
+                }
                 if (font2 != null) {
                     font = font2;
                 }
@@ -766,6 +780,10 @@ public abstract class TextTag extends DrawableTag {
                     DynamicTextGlyphEntry dynamicEntry = (DynamicTextGlyphEntry) entry;
                     if (dynamicEntry.fontFace != null) {
                         FontTag fnt = swf.getFontByName(dynamicEntry.fontFace);
+                        int fontId = swf.getCharacterId(fnt);
+                        if (normalizedFonts.containsKey(fontId)) {
+                            fnt = normalizedFonts.get(fontId);
+                        }
                         if (fnt != null && entry.glyphIndex != -1) {
                             shape = fnt.getGlyphShapeTable().get(entry.glyphIndex);
                             textColor3 = textColor2;
@@ -819,11 +837,12 @@ public abstract class TextTag extends DrawableTag {
     /**
      * Calculates text bounds.
      * @param swf SWF
+     * @param tag Text tag
      * @param textRecords Text records
      * @param textMatrix Text matrix
      * @return Text bounds
      */
-    public static ExportRectangle calculateTextBounds(SWF swf, List<TEXTRECORD> textRecords, MATRIX textMatrix) {
+    public static ExportRectangle calculateTextBounds(SWF swf, TextTag tag, List<TEXTRECORD> textRecords, MATRIX textMatrix) {
         FontTag font = null;
         int textHeight = 12;
         int x = 0;
@@ -844,39 +863,65 @@ public abstract class TextTag extends DrawableTag {
             }
 
             double rat = textHeight / 1024.0 / (font == null ? 1 : font.getDivider());
-
-            for (GLYPHENTRY entry : rec.glyphEntries) {
+                           
+            int leading = 0;
+            
+            if (font.hasLayout()) {
+                leading = font.getLeading();
+            }
+            if (tag instanceof DefineEditTextTag) {
+                DefineEditTextTag det = (DefineEditTextTag) tag;                
+                if (det.hasLayout) {
+                    leading = (int) Math.round(det.leading / rat);
+                }
+            }
+            for (GLYPHENTRY entry : rec.glyphEntries) {                                                                                
                 Matrix mat = new Matrix();
-                mat = mat.concatenate(new Matrix(textMatrix));
-                Matrix matTr = Matrix.getTranslateInstance(x, y);
-                mat = mat.concatenate(matTr);
-                mat = mat.concatenate(Matrix.getScaleInstance(rat));
+                mat = mat.preConcatenate(new Matrix(textMatrix));
+                mat = mat.preConcatenate(Matrix.getScaleInstance(rat));
+                mat = mat.preConcatenate(Matrix.getTranslateInstance(x, y));                                                                                
+                
                 if (entry.glyphIndex != -1 && glyphs != null) {
-                    // shapeNum: 1
-                    SHAPE shape = glyphs.get(entry.glyphIndex);
-                    RECT glyphBounds = shape.getBounds(1);
-                    int glyphWidth = glyphBounds.getWidth();
-                    int glyphHeight = glyphBounds.getHeight();
-                    glyphBounds.Xmin -= glyphWidth / 2;
-                    glyphBounds.Ymin -= glyphHeight / 2;
-                    glyphBounds.Xmax += glyphWidth;
-                    glyphBounds.Ymax += glyphHeight;
-                    if (glyphBounds.Xmax > glyphBounds.Xmin && glyphBounds.Ymax > glyphBounds.Ymin) {
-                        ExportRectangle rect = mat.transform(new ExportRectangle(glyphBounds));
+                    SHAPE shape = glyphs.get(entry.glyphIndex);                                                            
+                    
+                    ExportRectangle glyphBounds = new ExportRectangle(shape.getBounds(1)); // shapeNum: 1
+                    
+                    if (font.hasLayout()) {                       
+                        glyphBounds = new ExportRectangle(0, -font.getAscent(), entry.glyphAdvance / rat, font.getDescent() + leading);
+                    } else {                                        
+                        double glyphWidth = glyphBounds.getWidth();
+                        double glyphHeight = glyphBounds.getHeight();                       
+                        glyphBounds.xMin -= glyphWidth / 2;
+                        glyphBounds.yMin -= glyphHeight / 2;
+                        glyphBounds.xMax += glyphWidth;
+                        glyphBounds.yMax += glyphHeight;
+                    }
+                    if (glyphBounds.xMax > glyphBounds.xMin && glyphBounds.yMax > glyphBounds.yMin) {
+                        ExportRectangle rect = mat.transform(glyphBounds);                                                
+                        
                         if (result == null) {
-                            result = rect;
-                        } else {
-                            result.xMin = Math.min(result.xMin, rect.xMin);
-                            result.yMin = Math.min(result.yMin, rect.yMin);
-                            result.xMax = Math.max(result.xMax, rect.xMax);
-                            result.yMax = Math.max(result.yMax, rect.yMax);
+                            result = new ExportRectangle(Double.MAX_VALUE, Double.MAX_VALUE, -Double.MAX_VALUE, -Double.MAX_VALUE);
                         }
+                       
+                        result.xMin = Math.min(result.xMin, Math.round(rect.xMin));
+                        result.yMin = Math.min(result.yMin, Math.round(rect.yMin));
+                        result.xMax = Math.max(result.xMax, Math.round(rect.xMax));
+                        result.yMax = Math.max(result.yMax, Math.round(rect.yMax));
                     }
                     x += entry.glyphAdvance;
-                }
+                }                
             }
         }
 
+        if (result != null) {
+            if (tag instanceof DefineEditTextTag) {
+                //Probably space for the border rect
+                result.xMin -= 2 * SWF.unitDivisor;
+                result.yMin -= 2 * SWF.unitDivisor;
+                result.xMax += 2 * SWF.unitDivisor;
+                result.yMax += 2 * SWF.unitDivisor;
+            }
+        }
         return result;
     }
 
@@ -1097,7 +1142,7 @@ public abstract class TextTag extends DrawableTag {
 
                 exporter.addToGroup(textElement);
                 FontExportMode fontExportMode = FontExportMode.WOFF;
-                exporter.addStyle(fontFamily, new FontExporter().exportFont(font, fontExportMode), fontExportMode);
+                exporter.addFontFace(fontFamily, new FontExporter().exportFont(font, fontExportMode), fontExportMode);
 
                 if (hasOffset) {
                     exporter.endGroup();

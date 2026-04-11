@@ -16,11 +16,23 @@
  */
 package com.jpexs.decompiler.graph;
 
+import java.util.ArrayList;
+import java.util.List;
+
 /**
  * Second pass data.
  *
  * @author JPEXS
  */
 public class SecondPassData {
-   
+
+    /**
+     * List of cases for each switch statement
+     */
+    public List<List<GraphPart>> switchCases = new ArrayList<>();
+    
+    /**
+     * List of breaks of each switch statement
+     */
+    public List<GraphPart> switchBreaks = new ArrayList<>();
 }

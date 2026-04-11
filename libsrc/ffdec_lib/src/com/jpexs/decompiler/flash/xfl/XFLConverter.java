@@ -1153,6 +1153,9 @@ public class XFLConverter {
         ct.getNeededCharactersDeep(needed, neededClasses);
         for (int n : needed) {
             CharacterTag nc = ct.getSwf().getCharacter(n);
+            if (nc == null) {
+                continue;
+            }
             if (result.contains(nc)) {
                 continue;
             }
@@ -1166,6 +1169,9 @@ public class XFLConverter {
         
         for (String n : neededClasses) {
             CharacterTag nc = ct.getSwf().getCharacterByClass(n);
+            if (nc == null) {
+                continue;
+            }
             if (result.contains(nc)) {
                 continue;
             }
@@ -3736,11 +3742,13 @@ public class XFLConverter {
                             }
                         }
 
-                        StringBuilderTextWriter writer = new StringBuilderTextWriter(Configuration.getCodeFormatting(), scriptBuilder);
-                        frameBody.toString(new LinkedHashSet<>(), swfVersion, callStack, abcIndex, "??", ScriptExportMode.AS, abc, methodTrait, writer, new ArrayList<>(), new HashSet<>(), classIndex);
+                        if (!Configuration.exportFlaAs3DisableScriptLayer.get()) {
+                            StringBuilderTextWriter writer = new StringBuilderTextWriter(Configuration.getCodeFormatting(), scriptBuilder);
+                            frameBody.toString(new LinkedHashSet<>(), swfVersion, callStack, abcIndex, "??", ScriptExportMode.AS, abc, methodTrait, writer, new ArrayList<>(), new HashSet<>(), classIndex);
 
-                        String script = scriptBuilder.toString();
-                        ret.put(frame, script);
+                            String script = scriptBuilder.toString();
+                            ret.put(frame, script);
+                        }
                     }
                 }
 
@@ -6236,7 +6244,7 @@ public class XFLConverter {
         }
         if (useAS3 && settings.exportScript) {
             try {
-                ScriptExportSettings scriptExportSettings = new ScriptExportSettings(ScriptExportMode.AS, false, true, false, true, "/_assets/", Configuration.linkAllClasses.get(), true);
+                ScriptExportSettings scriptExportSettings = new ScriptExportSettings(ScriptExportMode.AS, false, !Configuration.exportFlaAs3DisableScriptLayer.get(), false, true, "/_assets/", Configuration.linkAllClasses.get(), true);
                 swf.exportActionScript(handler, scriptsDir.getAbsolutePath(), scriptExportSettings, parallel, null);
             } catch (Exception ex) {
                 logger.log(Level.SEVERE, "Error during ActionScript3 export", ex);

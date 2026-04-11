@@ -74,6 +74,7 @@ import java.io.IOException;
 import java.io.StringReader;
 import java.util.ArrayList;
 import java.util.Arrays;
+import java.util.HashMap;
 import java.util.HashSet;
 import java.util.LinkedHashMap;
 import java.util.List;
@@ -212,12 +213,12 @@ public class DefineEditTextTag extends TextTag {
      */
     public DefineEditTextTag(SWFInputStream sis, ByteArrayRange data) throws IOException {
         super(sis.getSwf(), ID, NAME, data);
-        readData(sis, data, 0, false, false, false);
+        readData(sis, data, 0, false, false, false);        
     }
 
     @Override
     public void removeCharacterGlyph(int glyphPos) {
-        List<TEXTRECORD> recs = getTextRecords(getSwf());
+        List<TEXTRECORD> recs = getTextRecords(getSwf(), new HashMap<>());
         int pos = 0;
         for (TEXTRECORD r : recs) {
             if (r instanceof AdvancedTextRecord) {
@@ -304,7 +305,7 @@ public class DefineEditTextTag extends TextTag {
 
     @Override
     public void insertCharacterGlyph(int glyphPos, char character) {
-        List<TEXTRECORD> recs = getTextRecords(getSwf());
+        List<TEXTRECORD> recs = getTextRecords(getSwf(), new HashMap<>());
         int pos = 0;
         String str = "" + character;
         switch (character) {
@@ -474,6 +475,10 @@ public class DefineEditTextTag extends TextTag {
 
     @Override
     public MATRIX getTextMatrix() {
+        return new MATRIX();
+    }
+
+    public MATRIX getBoundsMatrix() {
         MATRIX matrix = new MATRIX();
         matrix.translateX = bounds.Xmin;
         matrix.translateY = bounds.Ymin;
@@ -527,6 +532,7 @@ public class DefineEditTextTag extends TextTag {
     }
 
     private List<CharacterWithStyle> getTextWithStyle() {
+        //Map<Integer, FontTag> normalizedFonts
         if (swf == null) {
             return new ArrayList<>();
         }
@@ -537,6 +543,10 @@ public class DefineEditTextTag extends TextTag {
         } else {
             style.font = swf.getFont(fontId);
         }
+        /*int fontId = swf.getCharacterId(style.font);
+        if (normalizedFonts.containsKey(fontId)) {
+            style.font = normalizedFonts.get(fontId);
+        }*/
         style.fontHeight = fontHeight;
         style.fontLeading = leading;
         if (hasTextColor) {
@@ -694,10 +704,10 @@ public class DefineEditTextTag extends TextTag {
                                         try {
                                             char firstChar = size.charAt(0);
                                             if (firstChar != '+' && firstChar != '-') {
-                                                int fontSize = Integer.parseInt(size);
+                                                double fontSize = Double.parseDouble(size);
                                                 style.fontHeight = (int) Math.round(fontSize * SWF.unitDivisor);
                                             } else {
-                                                int fontSizeDelta = (int) Math.round(Integer.parseInt(size.substring(1)) * SWF.unitDivisor);
+                                                int fontSizeDelta = (int) Math.round(Double.parseDouble(size.substring(1)) * SWF.unitDivisor);
                                                 if (firstChar == '+') {
                                                     style.fontHeight = style.fontHeight + fontSizeDelta;
                                                 } else {
@@ -778,6 +788,13 @@ public class DefineEditTextTag extends TextTag {
                                 if (style.font == null) {
                                     style.fontFace = null;
                                 }
+                                /*
+                                else {
+                                    fontId = swf.getCharacterId(style.font);
+                                    if (normalizedFonts.containsKey(fontId)) {
+                                        style.font = normalizedFonts.get(fontId);
+                                    }
+                                }*/
                             }
                             addCharacters(ret, txt, style, s.position);
                             break;
@@ -907,7 +924,7 @@ public class DefineEditTextTag extends TextTag {
             String text = initialText.replace("\\", "\\\\").replace("[", "\\[").replace("]", "\\]");
             writer.hilightSpecial(text, HighlightSpecialType.TEXT);
         }
-        writer.finishHilights();
+        writer.finishHilights();        
         return new HighlightedText(writer);
     }
 
@@ -1240,7 +1257,7 @@ public class DefineEditTextTag extends TextTag {
     @Override
     public void getNeededCharacters(Set<Integer> needed, Set<String> neededClasses, SWF swf) {
         if (hasFont) {
-            needed.add(fontId);            
+            needed.add(fontId);
         }
         if (hasFontClass) {
             neededClasses.add(fontClass);
@@ -1255,7 +1272,7 @@ public class DefineEditTextTag extends TextTag {
                     } else {
                         neededClasses.addAll(ch.style.font.getClassNames());
                     }
-                }               
+                }
             }
         }
     }
@@ -1308,9 +1325,11 @@ public class DefineEditTextTag extends TextTag {
     }
 
     private void render(TextRenderMode renderMode, SerializableImage image, SVGExporter svgExporter, StringBuilder htmlCanvasBuilder, Matrix transformation, ColorTransform colorTransform, double zoom, int selectionStart, int selectionEnd, int aaScale) {
+        Map<Integer, FontTag> normalizedFonts = new HashMap<>();
         if (image != null && image.getGraphics() instanceof RequiresNormalizedFonts) {
             RequiresNormalizedFonts g = (RequiresNormalizedFonts) image.getGraphics();
             Map<Integer, TextTag> normalizedTexts = g.getNormalizedTexts();
+            normalizedFonts = g.getNormalizedFonts();
             int realTextId = getSwf().getCharacterId(this);
             if (normalizedTexts.containsKey(realTextId) && normalizedTexts.get(realTextId) instanceof DefineEditTextTag && normalizedTexts.get(realTextId) != this) {
                 DefineEditTextTag normalizedText = (DefineEditTextTag) normalizedTexts.get(realTextId);
@@ -1324,18 +1343,18 @@ public class DefineEditTextTag extends TextTag {
             RGB fillColor = new RGBA(Color.white);
             switch (renderMode) {
                 case BITMAP:
-                    drawBorder(swf, image, borderColor, fillColor, getRect(), getTextMatrix(), transformation, colorTransform, aaScale);
+                    drawBorder(swf, image, borderColor, fillColor, getRect(), getBoundsMatrix(), transformation, colorTransform, aaScale);
                     break;
                 case HTML5_CANVAS:
-                    drawBorderHtmlCanvas(swf, htmlCanvasBuilder, borderColor, fillColor, getRect(), getTextMatrix(), colorTransform, zoom);
+                    drawBorderHtmlCanvas(swf, htmlCanvasBuilder, borderColor, fillColor, getRect(), getBoundsMatrix(), colorTransform, zoom);
                     break;
                 case SVG:
-                    drawBorderSVG(swf, svgExporter, borderColor, fillColor, getRect(), getTextMatrix(), transformation, colorTransform, zoom);
+                    drawBorderSVG(swf, svgExporter, borderColor, fillColor, getRect(), getBoundsMatrix(), transformation, colorTransform, zoom);
                     break;
             }
         }
         if (hasText) {
-            List<TEXTRECORD> allTextRecords = getTextRecords(swf);
+            List<TEXTRECORD> allTextRecords = getTextRecords(swf, normalizedFonts);
             switch (renderMode) {
                 case BITMAP:
                     staticTextToImage(swf, allTextRecords, 2, image, getTextMatrix(), transformation, colorTransform, selectionStart, selectionEnd, aaScale);
@@ -1350,7 +1369,7 @@ public class DefineEditTextTag extends TextTag {
         }
     }
 
-    public List<TEXTRECORD> getTextRecords(SWF swf) {
+    public List<TEXTRECORD> getTextRecords(SWF swf, Map<Integer, FontTag> normalizedFonts) {
         DynamicTextModel textModel = new DynamicTextModel();
         List<CharacterWithStyle> txt = getTextWithStyle();
         TextStyle lastStyle = null;
@@ -1376,6 +1395,12 @@ public class DefineEditTextTag extends TextTag {
                 }
 
                 FontTag font = lastStyle.font;
+
+                int fontId = swf.getCharacterId(font);
+                if (normalizedFonts.containsKey(fontId)) {
+                    font = normalizedFonts.get(fontId);
+                }
+
                 DynamicTextGlyphEntry ge = new DynamicTextGlyphEntry();
                 ge.fontFace = lastStyle.fontFace;
                 if (ge.fontFace == null && font != null) {
@@ -1526,10 +1551,20 @@ public class DefineEditTextTag extends TextTag {
             } else {
                 for (SameStyleTextRecord tr : line) {
                     width += tr.width;
-                    int lineHeight = (useOutlines && tr.style.font != null /*Font missing*/) && tr.style.font.hasLayout() ? (int) Math.round(tr.style.fontHeight * tr.style.font.getAscent() / tr.style.font.getDivider() / 1024.0) + tr.style.fontLeading
-                            : tr.style.fontHeight + tr.style.fontLeading;
-                    if (useOutlines && tr.style.font != null && !firstLine && tr.style.font.hasLayout()) {
-                        lineHeight += (int) Math.round(tr.style.fontHeight * tr.style.font.getDescent() / tr.style.font.getDivider() / 1024.0);
+                    FontTag font = tr.style.font;
+                    if (useOutlines && font != null) {
+                        int fontId = swf.getCharacterId(font);
+                        if (normalizedFonts.containsKey(fontId)) {
+                            font = normalizedFonts.get(fontId);
+                        }
+                    }
+                    int lineHeight = (useOutlines && font != null /*Font missing*/) && font.hasLayout() ? (int) Math.round(tr.style.fontHeight * font.getAscent() / font.getDivider() / 1024.0)
+                            : tr.style.fontHeight;
+                    if (!firstLine) {
+                        lineHeight += tr.style.fontLeading;
+                    }
+                    if (useOutlines && font != null && !firstLine && font.hasLayout()) {
+                        lineHeight += (int) Math.round(tr.style.fontHeight * font.getDescent() / font.getDivider() / 1024.0);
                     }
                     //TODO: maybe get ascent/descent from system font when not haslayout
                     lastHeight = lineHeight;
@@ -1607,7 +1642,7 @@ public class DefineEditTextTag extends TextTag {
 
     @Override
     public ExportRectangle calculateTextBounds() {
-        return null;
+        return calculateTextBounds(swf, this, getTextRecords(swf, new HashMap<>()), new MATRIX());
     }
 
     @Override
@@ -1645,11 +1680,11 @@ public class DefineEditTextTag extends TextTag {
 
     @Override
     public Dimension getFilterDimensions() {
-        return new Dimension(0, 0);                
+        return new Dimension(0, 0);
     }
 
     @Override
     public RECT getRectWithFilters() {
         return getRect();
-    }        
+    }
 }

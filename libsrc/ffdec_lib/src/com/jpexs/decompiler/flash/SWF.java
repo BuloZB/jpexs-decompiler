@@ -617,6 +617,12 @@ public final class SWF implements SWFContainerItem, Timelined, Openable {
      */
     @Internal
     public String debuggerPackage = null;
+    
+    /**
+     * Lock for getting dependent
+     */
+    @Internal
+    private final Object dependentLock = new Object();
 
     /**
      * Imported characterId to SWF map.
@@ -692,11 +698,6 @@ public final class SWF implements SWFContainerItem, Timelined, Openable {
      * AS3 obfuscated identifiers map
      */
     private transient Map<String, String> obfuscatedIdentifiersMap = null;
-
-    /**
-     * Lock for characters synchronization
-     */
-    private final Object charactersLock = new Object();
 
     /**
      * SHA 256 hash of original data
@@ -1003,56 +1004,54 @@ public final class SWF implements SWFContainerItem, Timelined, Openable {
      * @param withImported Include tags imported with importasset/2 tag?
      * @return Character id to character map
      */
-    public Map<Integer, CharacterTag> getCharacters(boolean withImported) {
+    public synchronized Map<Integer, CharacterTag> getCharacters(boolean withImported) {
         Map<Integer, CharacterTag> newCharacters = characters;
         Map<Integer, CharacterTag> newCharactersWithImported = charactersWithImported;
-        synchronized (charactersLock) {
-            if (newCharacters == null || newCharactersWithImported == null) {
-                if (destroyed) {
-                    return new HashMap<>();
-                }
-                Map<Integer, CharacterTag> chars = new HashMap<>();
-                Map<Integer, CharacterTag> charsWithImported = new HashMap<>();
-                Map<Integer, List<CharacterIdTag>> charIdtags = new HashMap<>();
-                Map<Integer, DefineExternalImage2> eimages = new HashMap<>();
-                parseCharacters(getTags(), eimages, chars, charIdtags);
-                charsWithImported.putAll(chars);
-                for (int importedCharacterId : importedCharacterIds.keySet()) {
-                    int exportedCharacterId = importedCharacterIds.get(importedCharacterId);
-                    SWF importedSwf = importedCharacterSourceSwfs.get(importedCharacterId);
-                    CharacterTag exportedCharacter = importedSwf.getCharacter(exportedCharacterId);
-                    charsWithImported.put(importedCharacterId, exportedCharacter);
-                    charIdtags.put(importedCharacterId, importedSwf.getCharacterIdTags(exportedCharacterId));
-                    //FIXME? eimages
+        if (newCharacters == null || newCharactersWithImported == null) {
+            if (destroyed) {
+                return new HashMap<>();
+            }
+            Map<Integer, CharacterTag> chars = new HashMap<>();
+            Map<Integer, CharacterTag> charsWithImported = new HashMap<>();
+            Map<Integer, List<CharacterIdTag>> charIdtags = new HashMap<>();
+            Map<Integer, DefineExternalImage2> eimages = new HashMap<>();
+            parseCharacters(getTags(), eimages, chars, charIdtags);
+            charsWithImported.putAll(chars);
+            for (int importedCharacterId : importedCharacterIds.keySet()) {
+                int exportedCharacterId = importedCharacterIds.get(importedCharacterId);
+                SWF importedSwf = importedCharacterSourceSwfs.get(importedCharacterId);
+                CharacterTag exportedCharacter = importedSwf.getCharacter(exportedCharacterId);
+                charsWithImported.put(importedCharacterId, exportedCharacter);
+                charIdtags.put(importedCharacterId, importedSwf.getCharacterIdTags(exportedCharacterId));
+                //FIXME? eimages
 
-                    charsWithImported.get(importedCharacterId).setImported(true, true);
-                    for (CharacterIdTag chi : charIdtags.get(importedCharacterId)) {
-                        if (chi instanceof Tag) {
-                            ((Tag) chi).setImported(true, true);
-                        }
+                charsWithImported.get(importedCharacterId).setImported(true, true);
+                for (CharacterIdTag chi : charIdtags.get(importedCharacterId)) {
+                    if (chi instanceof Tag) {
+                        ((Tag) chi).setImported(true, true);
                     }
                 }
-                Map<CharacterIdTag, Integer> charToId = new IdentityHashMap<>();
-                for (int id : charsWithImported.keySet()) {
-                    charToId.put(charsWithImported.get(id), id);
+            }
+            Map<CharacterIdTag, Integer> charToId = new IdentityHashMap<>();
+            for (int id : charsWithImported.keySet()) {
+                charToId.put(charsWithImported.get(id), id);
+            }
+            for (int id : charIdtags.keySet()) {
+                for (CharacterIdTag ch : charIdtags.get(id)) {
+                    charToId.put(ch, id);
                 }
-                for (int id : charIdtags.keySet()) {
-                    for (CharacterIdTag ch : charIdtags.get(id)) {
-                        charToId.put(ch, id);
-                    }
-                }
-
-                newCharacters = Collections.unmodifiableMap(chars);
-                newCharactersWithImported = Collections.unmodifiableMap(charsWithImported);
-                characters = newCharacters;
-                charactersWithImported = newCharactersWithImported;
-                characterToId = Collections.unmodifiableMap(charToId);
-                characterIdTags = Collections.unmodifiableMap(charIdtags);
-                externalImages2 = Collections.unmodifiableMap(eimages);
             }
 
-            return withImported ? newCharactersWithImported : newCharacters;
+            newCharacters = Collections.unmodifiableMap(chars);
+            newCharactersWithImported = Collections.unmodifiableMap(charsWithImported);
+            characters = newCharacters;
+            charactersWithImported = newCharactersWithImported;
+            characterToId = Collections.unmodifiableMap(charToId);
+            characterIdTags = Collections.unmodifiableMap(charIdtags);
+            externalImages2 = Collections.unmodifiableMap(eimages);
         }
+
+        return withImported ? newCharactersWithImported : newCharacters;        
     }
 
     /**
@@ -1163,14 +1162,11 @@ public final class SWF implements SWFContainerItem, Timelined, Openable {
      * @return Map of characterId to set of dependent characterIds
      */
     public Map<Integer, Set<Integer>> getDependentCharacters() {
-        if (dependentCharacters == null) {
-            synchronized (this) {
-                if (dependentCharacters == null) {
-                    computeDependentCharacters();
-                }
-            }
+        synchronized (dependentLock) {            
+            if (dependentCharacters == null) {
+                computeDependentCharacters();
+            }        
         }
-
         return dependentCharacters;
     }
 
@@ -1252,17 +1248,31 @@ public final class SWF implements SWFContainerItem, Timelined, Openable {
     }
 
     /**
+     * Check if dependent characters are loaded
+     * @return True if loaded
+     */
+    public boolean isDependentCharactersLoaded() {
+        return dependentCharacters != null;        
+    }
+    
+    /**
+     * Check if dependent frames are loaded
+     * @return True if loaded
+     */
+    public boolean isDependentFramesLoaded() {        
+        return dependentFrames != null && dependentClassFrames != null;    
+    }
+    
+    /**
      * Gets dependent frames for specified character.
      *
      * @param characterId Character id
      * @return Set of dependent characterids
      */
     public Set<Integer> getDependentFrames(int characterId) {
-        if (dependentFrames == null) {
-            synchronized (this) {
-                if (dependentFrames == null) {
-                    computeDependentFrames();
-                }
+        synchronized (dependentLock) {
+            if (dependentFrames == null) {
+                computeDependentFrames();
             }
         }
 
@@ -1277,7 +1287,7 @@ public final class SWF implements SWFContainerItem, Timelined, Openable {
      */
     public Set<Integer> getDependentFramesByClass(String characterClass) {
         if (dependentClassFrames == null) {
-            synchronized (this) {
+            synchronized (dependentLock) {
                 if (dependentClassFrames == null) {
                     computeDependentFrames();
                 }
@@ -1701,7 +1711,7 @@ public final class SWF implements SWFContainerItem, Timelined, Openable {
      * @param characters Map of characterId to CharacterTag
      * @param characterIdTags Map of characterId to list of CharacterIdTags
      */
-    private synchronized void parseCharacters(Iterable<Tag> list, Map<Integer, DefineExternalImage2> externalImages2, Map<Integer, CharacterTag> characters, Map<Integer, List<CharacterIdTag>> characterIdTags) {
+    private void parseCharacters(Iterable<Tag> list, Map<Integer, DefineExternalImage2> externalImages2, Map<Integer, CharacterTag> characters, Map<Integer, List<CharacterIdTag>> characterIdTags) {
         Iterator<Tag> iterator = list.iterator();
         while (iterator.hasNext()) {
             Tag t = iterator.next();
@@ -2428,7 +2438,11 @@ public final class SWF implements SWFContainerItem, Timelined, Openable {
                 if (importedSwfs.containsKey(url)) {
                     iSwf = importedSwfs.get(url);
                 } else {
-                    iSwf = resolver.resolveUrl(this.file, url);
+                    if (resolver.doIgnoreUrl(this.file, url)) {
+                        iSwf = null;
+                    } else {
+                        iSwf = resolver.resolveUrl(this.file, url);
+                    }
                     importedSwfs.put(url, iSwf);
                 }
                 if (iSwf != null) {
@@ -3956,7 +3970,7 @@ public final class SWF implements SWFContainerItem, Timelined, Openable {
      * @throws InterruptedException On interrupt
      */
     private static void getVariables(SWF swf, boolean insideDoInitAction, List<MyEntry<DirectValueActionItem, ConstantPool>> variables, List<GraphSourceItem> functions, HashMap<DirectValueActionItem, ConstantPool> strings, HashMap<DirectValueActionItem, String> usageTypes, ActionGraphSource code, long addr, String path) throws InterruptedException {
-        ActionLocalData localData = new ActionLocalData(null, insideDoInitAction, new HashMap<>() /*??*/, new LinkedHashSet<>());
+        ActionLocalData localData = new ActionLocalData(null, insideDoInitAction, new HashMap<>() /*??*/, new LinkedHashSet<>(), new ArrayList<>(), new ArrayList<>());
         getVariables(swf, null, localData, new TranslateStack(path), new ArrayList<>(), code, code.adr2pos(addr), variables, functions, strings, new ArrayList<>(), usageTypes, path);
     }
 
@@ -5034,9 +5048,13 @@ public final class SWF implements SWFContainerItem, Timelined, Openable {
             return image;
         }
 
+        int originalWidth = (int) Math.ceil(rect.getWidth() * zoom / SWF.unitDivisor);
+        int originalHeight = (int) Math.ceil(rect.getHeight() * zoom / SWF.unitDivisor);        
+        
         SerializableImage image = new SerializableImage(
-                (int) Math.ceil(rect.getWidth() * zoom * aaScale / SWF.unitDivisor),
-                (int) Math.ceil(rect.getHeight() * zoom * aaScale / SWF.unitDivisor), SerializableImage.TYPE_INT_ARGB_PRE
+                originalWidth,
+                originalHeight, 
+                SerializableImage.TYPE_INT_ARGB_PRE
         );
         if (backGroundColor == null) {
             image.fillTransparent();
@@ -5048,25 +5066,17 @@ public final class SWF implements SWFContainerItem, Timelined, Openable {
         }
 
         Matrix m = transformation.clone();
-        m.translate(-rect.Xmin * zoom * aaScale, -rect.Ymin * zoom * aaScale);
-        m.scale(zoom * aaScale);
+        m.translate(-rect.Xmin * zoom, -rect.Ymin * zoom);
+        m.scale(zoom);
         RenderContext renderContext = new RenderContext();
         renderContext.cursorPosition = cursorPosition;
         renderContext.mouseButton = mouseButton;
 
         ExportRectangle viewRect = new ExportRectangle(rect);
 
-        viewRect.xMin *= aaScale;
-        viewRect.yMin *= aaScale;
-        viewRect.xMax *= aaScale;
-        viewRect.yMax *= aaScale;
-
-        timeline.toImage(frame, time, renderContext, image, image, false, m, new Matrix(), m, colorTransform, zoom * aaScale, true, viewRect, viewRect, m, true, Timeline.DRAW_MODE_ALL, 0, canUseSmoothing, new ArrayList<>(), aaScale);
-
-        if (aaScale > 1) {
-            image = new SerializableImage(ImageResizer.resizeImage(image.getBufferedImage(), image.getWidth() / aaScale, image.getHeight() / aaScale, RenderingHints.VALUE_INTERPOLATION_BICUBIC, true));
-        }
-
+        
+        timeline.toImage(frame, time, renderContext, image, image, false, m, new Matrix(), m, colorTransform, zoom, true, viewRect, viewRect, m, true, Timeline.DRAW_MODE_ALL, 0, canUseSmoothing, new ArrayList<>(), aaScale);
+        
         return image;
     }
 
@@ -6475,6 +6485,6 @@ public final class SWF implements SWFContainerItem, Timelined, Openable {
 
     @Override
     public RECT getRectWithFilters() {
-        return getRect();
+        return getRectWithStrokes();
     }
 }
