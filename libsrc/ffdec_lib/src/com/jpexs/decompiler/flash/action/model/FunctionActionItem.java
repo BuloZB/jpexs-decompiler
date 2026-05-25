@@ -496,57 +496,57 @@ public class FunctionActionItem extends ActionItem {
         }
 
         int regCount = 0;
-        if (actions != null && !actions.isEmpty()) {
-            localDataCopy.inFunction++;
+        
+        localDataCopy.inFunction++;
 
-            for (VariableActionItem v : variables) {
-                String varName = v.getVariableName();
-                GraphTargetItem stored = v.getStoreValue();
-                if (needsFun2) {
-                    if (v.isDefinition() && !registerNames.contains(varName) && !deeplyUsedVariableNames.contains(varName)
-                            && !hasEval) {
-                        registerNames.add(varName);
-                    }
+        for (VariableActionItem v : variables) {
+            String varName = v.getVariableName();
+            GraphTargetItem stored = v.getStoreValue();
+            if (needsFun2) {
+                if (v.isDefinition() && !registerNames.contains(varName) && !deeplyUsedVariableNames.contains(varName)
+                        && !hasEval) {
+                    registerNames.add(varName);
                 }
+            }
 
-                if (registerNames.contains(varName)) {
-                    if (stored != null) {
-                        v.setBoxedValue(new StoreRegisterActionItem(null, null, new RegisterNumber(registerNames.indexOf(varName), varName), stored, false));
-                    } else {
-                        v.setBoxedValue(new DirectValueActionItem(new RegisterNumber(registerNames.indexOf(varName), varName)));
-                    }
-                } else if (v.isDefinition()) {
-                    v.setBoxedValue(new DefineLocalActionItem(null, null, ((ActionSourceGenerator) generator).pushConstTargetItem(varName), stored));
-                } else if (stored != null) {
-                    v.setBoxedValue(new SetVariableActionItem(null, null, ((ActionSourceGenerator) generator).pushConstTargetItem(varName), stored));
+            if (registerNames.contains(varName)) {
+                if (stored != null) {
+                    v.setBoxedValue(new StoreRegisterActionItem(null, null, new RegisterNumber(registerNames.indexOf(varName), varName), stored, false));
                 } else {
-                    v.setBoxedValue(new GetVariableActionItem(null, null, ((ActionSourceGenerator) generator).pushConstTargetItem(varName)));
+                    v.setBoxedValue(new DirectValueActionItem(new RegisterNumber(registerNames.indexOf(varName), varName)));
                 }
-
+            } else if (v.isDefinition()) {
+                v.setBoxedValue(new DefineLocalActionItem(null, null, ((ActionSourceGenerator) generator).pushConstTargetItem(varName), stored));
+            } else if (stored != null) {
+                v.setBoxedValue(new SetVariableActionItem(null, null, ((ActionSourceGenerator) generator).pushConstTargetItem(varName), stored));
+            } else {
+                v.setBoxedValue(new GetVariableActionItem(null, null, ((ActionSourceGenerator) generator).pushConstTargetItem(varName)));
             }
-            for (int i = 1 /* zero is not preloaded*/; i < registerNames.size(); i++) {
-                localDataCopy.registerVars.put(registerNames.get(i), i);
-            }
 
+        }
+        for (int i = 1 /* zero is not preloaded*/; i < registerNames.size(); i++) {
+            localDataCopy.registerVars.put(registerNames.get(i), i);
+        }
+
+        if (actions != null && !actions.isEmpty()) {
             ret.addAll(asGenerator.toActionList(asGenerator.generate(localDataCopy, actions)));
+        }
+        regCount = registerNames.size();
 
-            regCount = registerNames.size();
-
-            //some temporary registers can exceed variable+param count
-            for (GraphSourceItem a : ret) {
-                if (a instanceof ActionPush) {
-                    ActionPush apu = (ActionPush) a;
-                    for (Object o : apu.values) {
-                        if (o instanceof RegisterNumber) {
-                            RegisterNumber rn = (RegisterNumber) o;
-                            if (rn.number >= regCount) {
-                                regCount++;
-                            }
+        //some temporary registers can exceed variable+param count
+        for (GraphSourceItem a : ret) {
+            if (a instanceof ActionPush) {
+                ActionPush apu = (ActionPush) a;
+                for (Object o : apu.values) {
+                    if (o instanceof RegisterNumber) {
+                        RegisterNumber rn = (RegisterNumber) o;
+                        if (rn.number >= regCount) {
+                            regCount++;
                         }
                     }
                 }
             }
-        }
+        }        
         int len = Action.actionsToBytes(asGenerator.toActionList(ret), false, SWF.DEFAULT_VERSION).length;
         if (len > 0xFFFF) {
             throw new CompilationException("Function body is too large to fit into UI16.", line);

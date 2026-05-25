@@ -56,6 +56,41 @@ import javax.imageio.ImageIO;
  * @author JPEXS
  */
 public class ImageExporter {
+    
+    
+    private static ImageFormat getExportFormat(ImageTag imageTag, ImageExportSettings settings) {
+        ImageFormat fileFormat = imageTag.getOriginalImageFormat();
+        boolean hasSeparateAlpha = false;
+        if (imageTag instanceof HasSeparateAlphaChannel) {
+            HasSeparateAlphaChannel hsac = (HasSeparateAlphaChannel) imageTag;
+            hasSeparateAlpha = hsac.hasAlphaChannel();
+        }
+        if (settings.mode == ImageExportMode.PNG_GIF_JPEG && hasSeparateAlpha) {
+            fileFormat = ImageFormat.PNG;
+        }
+        if (settings.mode == ImageExportMode.PNG) {
+            fileFormat = ImageFormat.PNG;
+        }
+
+        if (settings.mode == ImageExportMode.JPEG) {
+            fileFormat = ImageFormat.JPEG;
+        }
+
+        if (settings.mode == ImageExportMode.BMP) {
+            fileFormat = ImageFormat.BMP;
+        }
+
+        if (settings.mode == ImageExportMode.WEBP) {
+            fileFormat = ImageFormat.WEBP;
+        }
+        return fileFormat;
+    }
+    
+    public static String getExportExtension(ImageTag imageTag, ImageExportSettings settings) {
+        ImageFormat fileFormat = getExportFormat(imageTag, settings);
+
+        return ImageHelper.getImageFormatString(fileFormat);
+    }
 
     public List<File> exportImages(AbortRetryIgnoreHandler handler, String outdir, ReadOnlyTagList tags, ImageExportSettings settings, EventListener evl) throws IOException, InterruptedException {
         List<File> ret = new ArrayList<>();
@@ -90,31 +125,9 @@ public class ImageExporter {
 
                 final ImageTag imageTag = (ImageTag) t;
 
-                ImageFormat fileFormat = imageTag.getOriginalImageFormat();
-                ImageFormat originalFormat = fileFormat;
-                boolean hasSeparateAlpha = false;
-                if (imageTag instanceof HasSeparateAlphaChannel) {
-                    HasSeparateAlphaChannel hsac = (HasSeparateAlphaChannel) imageTag;
-                    hasSeparateAlpha = hsac.hasAlphaChannel();
-                }
-                if (settings.mode == ImageExportMode.PNG_GIF_JPEG && hasSeparateAlpha) {
-                    fileFormat = ImageFormat.PNG;
-                }
-                if (settings.mode == ImageExportMode.PNG) {
-                    fileFormat = ImageFormat.PNG;
-                }
-
-                if (settings.mode == ImageExportMode.JPEG) {
-                    fileFormat = ImageFormat.JPEG;
-                }
-
-                if (settings.mode == ImageExportMode.BMP) {
-                    fileFormat = ImageFormat.BMP;
-                }
-
-                if (settings.mode == ImageExportMode.WEBP) {
-                    fileFormat = ImageFormat.WEBP;
-                }
+                
+                ImageFormat originalFormat = imageTag.getOriginalImageFormat();                
+                ImageFormat fileFormat = getExportFormat(imageTag, settings);
 
                 final File file = new File(outdir + File.separator + Helper.makeFileName(imageTag.getCharacterExportFileName() + "." + ImageHelper.getImageFormatString(fileFormat)));
 

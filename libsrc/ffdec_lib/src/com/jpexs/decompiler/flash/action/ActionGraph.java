@@ -433,6 +433,8 @@ public class ActionGraph extends Graph {
                         targetStartItem = st;
                         target = new DirectValueActionItem(null, null, 0, st.target, new ArrayList<>());
                     }
+                } else if (targetStart > -1) {
+                    targetEnd = t;
                 }
             }
             if (it instanceof SetTarget2ActionItem) {
@@ -445,7 +447,13 @@ public class ActionGraph extends Graph {
                         targetStartItem = st;
                         target = st.target;
                     }
+                } else if (targetStart > -1) {
+                    targetEnd = t;
                 }
+            }
+
+            if (it instanceof TellTargetActionItem && targetStart > -1) {
+                targetEnd = t;
             }
 
             if (targetStart > -1 && targetEnd > -1) {
@@ -459,7 +467,7 @@ public class ActionGraph extends Graph {
                 }
                 newlist.add(new TellTargetActionItem(targetStartItem.getSrc(), targetStartItem.getLineStartItem(), target, tellist));
                 //TODO: maybe set nested flag
-                for (int i = targetEnd + 1; i < list.size(); i++) {
+                for (int i = targetEnd + (it instanceof TellTargetActionItem ? 0 : 1); i < list.size(); i++) {
                     newlist.add(list.get(i));
                 }
                 list.clear();
@@ -467,7 +475,7 @@ public class ActionGraph extends Graph {
                 targetStart = -1;
                 targetEnd = -1;
                 target = null;
-                t = 0;
+                t = -1;
             }
         }
         for (int t = 1/*not first*/; t < list.size(); t++) {
@@ -1043,7 +1051,7 @@ public class ActionGraph extends Graph {
         ActionSecondPassData spd = new ActionSecondPassData();
         Set<GraphPart> processedIfs = new HashSet<>();
         checkSecondPassSwitches(localData, loops, throwStates, spd.switchCases, spd.switchBreaks, processedIfs, list, spd.switchParts, spd.switchOnFalseParts, spd.switchCaseExpressions);
-        
+
         return spd;
     }
 
@@ -1174,7 +1182,7 @@ public class ActionGraph extends Graph {
                                 allSwitchParts.add(switchParts);
                                 allSwitchOnFalseParts.add(switchOnFalseParts);
                                 allSwitchExpressions.add(switchExpressions);
-                                allSwitchCases.add(switchCases);                                
+                                allSwitchCases.add(switchCases);
                                 try {
                                     allSwitchBreaks.add(getMostCommonPart(localData, switchCases, loops, throwStates, new ArrayList<>()));
                                 } catch (InterruptedException ex) {

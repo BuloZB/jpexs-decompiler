@@ -8,7 +8,14 @@ package tests
 			{
 				return (param1 as TestClass2).attrib1 == 5;
 			};
-      }	
+        f(5, function g():int {
+            return 42;            
+        });
+      }
+      
+      private function f(a:int,b:Function) 
+      {
+      }
    }
 }
 

@@ -204,6 +204,7 @@ public class AntialiasedBitmapExporter extends BitmapExporter {
      *
      * @return Image
      */
+    @Override
     public SerializableImage getImage() {
         return image;
     }

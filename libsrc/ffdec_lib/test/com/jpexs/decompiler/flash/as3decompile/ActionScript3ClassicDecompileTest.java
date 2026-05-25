@@ -1831,7 +1831,11 @@ public class ActionScript3ClassicDecompileTest extends ActionScript3DecompileTes
         decompileMethod("classic", "testNamedAnonFunctions", "var test:* = function testFunc(param1:*, param2:int, param3:Array):Boolean\r\n"
                 + "{\r\n"
                 + "return (param1 as TestClass2).attrib1 == 5;\r\n"
-                + "};\r\n",
+                + "};\r\n"
+                + "this.f(5,function g():int\r\n"
+                + "{\r\n"
+                + "return 42;\r\n"
+                + "});\r\n",
                  false);
     }
 

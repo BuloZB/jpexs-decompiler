@@ -377,4 +377,17 @@ public class DefineButton2Tag extends ButtonTag implements ASMSourceContainer {
             needed.add(rec.characterId);
         }
     }
+
+    @Override
+    public void setSwf(SWF swf, boolean deep) {
+        super.setSwf(swf, deep);
+        
+        if (deep) {
+            if (actions != null) {
+                for (BUTTONCONDACTION action : actions) {
+                    action.setSourceTag(this);
+                }
+            }
+        }
+    }        
 }

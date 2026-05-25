@@ -342,8 +342,10 @@ public class PropertyAVM2Item extends AssignableAVM2Item {
                                     boolean found = false;
                                     String nsName = ns.getName(propValueAbc.constants).toRawString();
                                     while (ci != null) {
-                                        DottedChain clsName = ci.abc.instance_info.get(ci.index).getName(ci.abc.constants).getNameWithNamespace(new HashSet<>(), ci.abc, ci.abc.constants, false);
-                                        String clsNsName = clsName.isTopLevel() ? clsName.getLast() : clsName.getWithoutLast().toRawString() + ":" + clsName.getLast();
+                                        DottedChain clsFullName = ci.abc.instance_info.get(ci.index).getName(ci.abc.constants).getNameWithNamespace(new HashSet<>(), ci.abc, ci.abc.constants, false);
+                                        DottedChain clsPkg = clsFullName.getWithoutLast();
+                                        String clsName = clsFullName.getLast();
+                                        String clsNsName = clsPkg.isTopLevel() ? clsName : clsPkg.toRawString() + ":" + clsName;
                                         if (Objects.equals(nsName, clsNsName)) {
                                             found = true;
                                             break;

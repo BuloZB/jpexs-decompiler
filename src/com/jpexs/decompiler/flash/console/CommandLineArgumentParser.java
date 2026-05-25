@@ -102,6 +102,7 @@ import com.jpexs.decompiler.flash.exporters.settings.SoundExportSettings;
 import com.jpexs.decompiler.flash.exporters.settings.SpriteExportSettings;
 import com.jpexs.decompiler.flash.exporters.settings.SymbolClassExportSettings;
 import com.jpexs.decompiler.flash.exporters.settings.TextExportSettings;
+import com.jpexs.decompiler.flash.exporters.settings.XmlSwfExportSettings;
 import com.jpexs.decompiler.flash.exporters.swf.SwfToSwcExporter;
 import com.jpexs.decompiler.flash.exporters.swf.SwfXmlExporter;
 import com.jpexs.decompiler.flash.flexsdk.MxmlcAs3ScriptReplacer;
@@ -701,7 +702,7 @@ public class CommandLineArgumentParser {
             parseDecrypt(args);
             System.exit(0);
         } else if (command.equals("swf2xml")) {
-            parseSwf2Xml(args, charset);
+            parseSwf2Xml(args, charset, handler);
             System.exit(0);
         } else if (command.equals("xml2swf")) {
             parseXml2Swf(args, charset);
@@ -2711,15 +2712,58 @@ public class CommandLineArgumentParser {
         System.exit(result ? 0 : 1);
     }
 
-    private static void parseSwf2Xml(Stack<String> args, String charset) {
+    private static void parseSwf2Xml(Stack<String> args, String charset, AbortRetryIgnoreHandler handler) {
         if (args.size() < 2) {
             badArguments("swf2xml");
+        }
+
+        ScriptExportMode scriptExportMode = null;
+        ImageExportMode imageExportMode = null;
+        SoundExportMode soundExportMode = null;
+
+        String arg = args.pop();
+        if ("-external".equals(arg.toLowerCase(Locale.ENGLISH))) {
+            if (args.size() < 3) {
+                badArguments("swf2xml");
+            }
+            String ext = args.pop();
+            String[] parts = ext.split(",", -1);
+
+            for (String part : parts) {
+                switch (part) {
+                    case "as12script":
+                    case "as12script:as":
+                        scriptExportMode = ScriptExportMode.AS;
+                        break;
+                    case "image:png_gif_jpeg":
+                        imageExportMode = ImageExportMode.PNG_GIF_JPEG;
+                        break;
+                    case "image":
+                    case "image:png_gif_jpeg_alpha":
+                        imageExportMode = ImageExportMode.PNG_GIF_JPEG_ALPHA;
+                        break;
+                    case "definesound":
+                    case "definesound:mp3_wav_flv":
+                        soundExportMode = SoundExportMode.MP3_WAV_FLV;
+                        break;
+                    case "all":
+                        scriptExportMode = ScriptExportMode.AS;
+                        imageExportMode = ImageExportMode.PNG_GIF_JPEG_ALPHA;
+                        soundExportMode = SoundExportMode.MP3_WAV_FLV;
+                        break;
+                    default:
+                        System.err.println("Unsupported external value: \"" + part + "\"");
+                        badArguments("swf2xml");
+                }
+            }
+        } else {
+            args.push(arg);
         }
 
         try {
             try (StdInAwareFileInputStream is = new StdInAwareFileInputStream(args.pop())) {
                 SWF swf = new SWF(is, Configuration.parallelSpeedUp.get(), charset);
-                new SwfXmlExporter().exportXml(swf, new File(args.pop()));
+                new SwfXmlExporter().exportXml(swf, new File(args.pop()), new XmlSwfExportSettings(scriptExportMode, imageExportMode, soundExportMode), null, handler);
             } catch (FileNotFoundException ex) {
                 System.err.println("File not found.");
                 System.exit(1);
@@ -2738,8 +2782,10 @@ public class CommandLineArgumentParser {
 
         try {
             SWF swf = new SWF(charset);
-            try (StdInAwareFileInputStream in = new StdInAwareFileInputStream(args.pop())) {
-                new SwfXmlImporter().importSwf(swf, in);
+            String fileName = args.pop();
+            try (StdInAwareFileInputStream in = new StdInAwareFileInputStream(fileName)) {
+                File file = new File(StdInAwareFileInputStream.STDIN_PATH.equals(fileName) ? "." : fileName);
+                new SwfXmlImporter().importSwf(swf, in, file.getParentFile());
             }
             try (OutputStream fos = new BufferedOutputStream(new FileOutputStream(new File(args.pop())))) {
                 swf.saveTo(fos);

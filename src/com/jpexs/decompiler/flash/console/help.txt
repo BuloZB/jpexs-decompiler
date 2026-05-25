@@ -72,9 +72,19 @@ alias /?
     Decrypt HARMAN Air encrypted file.
     Decrypt HARMAN Air encrypted file <infile> and saves it to <outfile>.
 
--swf2xml <infile> <outfile>
+-swf2xml [-external <formats>] <infile> <outfile>
     Convert SWF to XML.
     Convert the <infile> SWF to <outfile> XML file.
+    -external parameter sets which items will be available externally
+    Values for <formats>: Use comma separated list of following:
+        as12script:as
+        as12script (same as "as12script:as")
+        image:png_gif_jpeg
+        image:png_gif_jpeg_alpha
+        image (same as "image:png_gif_jpeg_alpha")
+        definesound:mp3_wav_flv
+        definesound (same as "definesound:mp3_wav_flv")
+        all (same as "as12script,image,definesound")
 
 -xml2swf <infile> <outfile>
     Convert XML to SWF.
@@ -376,7 +386,8 @@ Pre-options:
         font:woff - WOFF format for Fonts
         font4:cff - CFF format for DefineFont4
         fla:<flaversion> or xfl:<flaversion> - Specify FLA format version
-    Values for <flaversion>: f5,mx,mx2004,f8,cs3,cs4,cs5,cs5.5,cs6,cc
+    Values for <flaversion>:
+        f1,f2,f3,f4,f5,mx,mx2004,f8,cs3,cs4,cs5,cs5.5,cs6,cc
     You can set multiple formats at once using comma (,)
     DO NOT PUT space between comma (,) and next value.
     The prefix with colon (:) is necessary.
@@ -447,7 +458,7 @@ Pre-options:
     When it has .bin extension, legacy storage is used.
 
 -onerror (abort|retry <N>|ignore)
-    Applies to: -export, -importScript
+    Applies to: -export, -importScript, -swf2xml
     Error handling mode.
     "abort" stops the exporting
     "retry" tries the exporting N times
@@ -486,10 +497,6 @@ Pre-options:
 -air
     Applies to: -replace, -importScript
     Use AIR ("airglobal.swc") for AS3 compilation instead of "playerglobal.swc".
-
--resamplewav
-    Applies to: -export
-    Enables resampling exported WAV sound files to 44kHz.
 
 -ignorebackground
     Applies to: -export

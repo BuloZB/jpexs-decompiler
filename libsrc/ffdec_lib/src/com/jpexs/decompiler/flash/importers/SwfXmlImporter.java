@@ -37,11 +37,17 @@ import com.jpexs.decompiler.flash.abc.types.traits.TraitMethodGetterSetter;
 import com.jpexs.decompiler.flash.abc.types.traits.TraitSlotConst;
 import com.jpexs.decompiler.flash.abc.types.traits.Traits;
 import com.jpexs.decompiler.flash.amf.amf3.Amf3Value;
+import com.jpexs.decompiler.flash.exporters.swf.SwfXmlExporter;
 import com.jpexs.decompiler.flash.tags.CSMSettingsTag;
+import com.jpexs.decompiler.flash.tags.DefineButtonTag;
+import com.jpexs.decompiler.flash.tags.DefineSoundTag;
 import com.jpexs.decompiler.flash.tags.DefineSpriteTag;
 import com.jpexs.decompiler.flash.tags.Tag;
 import com.jpexs.decompiler.flash.tags.TagTypeInfo;
 import com.jpexs.decompiler.flash.tags.UnknownTag;
+import com.jpexs.decompiler.flash.tags.base.ASMSource;
+import com.jpexs.decompiler.flash.tags.base.ImageTag;
+import com.jpexs.decompiler.flash.tags.base.SoundImportException;
 import com.jpexs.decompiler.flash.types.ALPHABITMAPDATA;
 import com.jpexs.decompiler.flash.types.ALPHACOLORMAPDATA;
 import com.jpexs.decompiler.flash.types.ARGB;
@@ -108,12 +114,16 @@ import com.jpexs.decompiler.flash.types.shaperecords.CurvedEdgeRecord;
 import com.jpexs.decompiler.flash.types.shaperecords.EndShapeRecord;
 import com.jpexs.decompiler.flash.types.shaperecords.StraightEdgeRecord;
 import com.jpexs.decompiler.flash.types.shaperecords.StyleChangeRecord;
+import com.jpexs.decompiler.flash.types.sound.SoundFormat;
 import com.jpexs.helpers.ByteArrayRange;
 import com.jpexs.helpers.HashArrayList;
 import com.jpexs.helpers.Helper;
+import com.jpexs.helpers.IdentityKey;
 import com.jpexs.helpers.ReflectionTools;
 import com.jpexs.helpers.utf8.Utf8InputStreamReader;
 import java.io.BufferedInputStream;
+import java.io.File;
+import java.io.FileInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.Reader;
@@ -124,7 +134,9 @@ import java.lang.reflect.Field;
 import java.lang.reflect.InvocationTargetException;
 import java.util.ArrayList;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.logging.Level;
 import java.util.logging.Logger;
@@ -145,7 +157,12 @@ public class SwfXmlImporter {
     /**
      * Maximum XML import version major.
      */
-    public static final int MAX_XML_IMPORT_VERSION_MAJOR = 2;
+    public static final int MAX_XML_IMPORT_VERSION_MAJOR = 3;
+    
+    /**
+     * Minimum version for using external files - attributes _externalActions, _externalFile
+     */
+    public static final int XML_IMPORT_VERSION_MAJOR_WITH_EXTERNAL_FILES = 3;
 
     private static final Logger logger = Logger.getLogger(SwfXmlImporter.class.getName());
 
@@ -221,11 +238,15 @@ public class SwfXmlImporter {
      * Imports SWF from input stream.
      * @param swf SWF object
      * @param in Input stream
+     * @param directory Directory where XML resides for external files resolving
      * @throws IOException On I/O error
      */
-    public void importSwf(SWF swf, InputStream in) throws IOException {
+    public void importSwf(SWF swf, InputStream in, File directory) throws IOException {
         XMLInputFactory xmlFactory = XMLInputFactory.newInstance();
 
+        Map<IdentityKey<Object>, String> asmExternalActions = new LinkedHashMap<>();
+        Map<IdentityKey<Tag>, String> tagExternalFiles = new LinkedHashMap<>();
+        
         try {
             try (Reader reader = new Utf8InputStreamReader(new BufferedInputStream(in))) {
                 XMLStreamReader xmlReader = xmlFactory.createXMLStreamReader(reader);
@@ -233,7 +254,7 @@ public class SwfXmlImporter {
                 xmlReader.nextTag();
                 xmlReader.require(XMLStreamConstants.START_ELEMENT, null, "swf");
 
-                processElement(xmlReader, swf, swf, null, MAX_XML_IMPORT_VERSION_MAJOR);
+                processElement(xmlReader, swf, swf, null, MAX_XML_IMPORT_VERSION_MAJOR, asmExternalActions, tagExternalFiles);
             }
 
             swf.clearAllCache();
@@ -241,16 +262,78 @@ public class SwfXmlImporter {
         } catch (XMLStreamException ex) {
             logger.log(Level.SEVERE, null, ex);
         }
+        
+        if (!asmExternalActions.isEmpty()) {
+            for (IdentityKey<Object> objKey : asmExternalActions.keySet()) {
+                ASMSource asm = null;
+                String fileName = asmExternalActions.get(objKey);
+                Object obj = objKey.get();
+                if (obj instanceof ASMSource) {
+                    asm = (ASMSource) obj;                    
+                }
+                if (obj instanceof DefineButtonTag) {
+                    DefineButtonTag defineButton = (DefineButtonTag) obj;
+                    asm = defineButton.getSubItems().get(0);
+                }
+                if (asm != null) {
+                    AS2ScriptImporter importer = new AS2ScriptImporter();                    
+                    try {
+                        importer.importActionScript(directory.toPath().resolve(fileName).toFile().getAbsolutePath(), asm, null);
+                    } catch (InterruptedException ex) {
+                        break;
+                    }
+                }
+            }
+        }
+        if (!tagExternalFiles.isEmpty()) {
+            for (IdentityKey<Tag> tagKey : tagExternalFiles.keySet()) {
+                String fileName = tagExternalFiles.get(tagKey);
+                Tag tag = tagKey.get();
+                if (tag == null) {
+                    continue;
+                }
+                if (tag instanceof ImageTag) {                                    
+                    ImageTag imageTag = (ImageTag) tag;
+                    ImageImporter importer = new ImageImporter();
+                    importer.importImage(imageTag, Helper.readFile(directory.toPath().resolve(fileName).toFile().getAbsolutePath()), -1);
+                    String baseName = new File(fileName).getName();
+                    if (baseName.contains(".")) {
+                        baseName = baseName.substring(0, baseName.lastIndexOf("."));
+                    }
+                    String alphaFile = new File(fileName).getParentFile().getAbsolutePath() + "/" + baseName + ".alpha.png";
+
+                    if (new File(alphaFile).exists()) {
+                        importer.importImageAlpha(imageTag, Helper.readFile(alphaFile));                    
+                    }
+                } else if (tag instanceof DefineSoundTag) {
+                    DefineSoundTag defineSoundTag = (DefineSoundTag) tag;
+                    SoundImporter importer = new SoundImporter();
+                    int format = SoundFormat.FORMAT_UNCOMPRESSED_LITTLE_ENDIAN;
+                    if (fileName.toLowerCase(Locale.ENGLISH).endsWith(".mp3")) {
+                        format = SoundFormat.FORMAT_MP3;
+                    }
+                    try (FileInputStream fis = new FileInputStream(directory.toPath().resolve(fileName).toFile().getAbsolutePath())) {                        
+                        importer.importDefineSound(defineSoundTag, fis, format);
+                    } catch (SoundImportException ex) {
+                        logger.log(Level.SEVERE, "Cannot import sound", ex);
+                    } catch (IOException ex) {
+                        logger.log(Level.SEVERE, "Cannot read sound", ex);
+                    }
+                } else {
+                    logger.log(Level.WARNING, "Unrecognized tag type for external file: {0}", tag.getTagName());
+                }
+            }
+        }
     }
 
     private void setSwfAndTimelined(SWF swf) {
         for (Tag t : swf.getTags()) {
-            t.setSwf(swf);
+            t.setSwf(swf, true);
             t.setTimelined(swf);
             if (t instanceof DefineSpriteTag) {
                 DefineSpriteTag s = (DefineSpriteTag) t;
                 for (Tag st : s.getTags()) {
-                    st.setSwf(swf);
+                    st.setSwf(swf, true);
                     st.setTimelined(s);
                 }
             }
@@ -269,7 +352,7 @@ public class SwfXmlImporter {
         XMLInputFactory xmlFactory = XMLInputFactory.newInstance();
         try {
             XMLStreamReader reader = xmlFactory.createXMLStreamReader(new StringReader(xml));
-            return processObject(reader, requiredType, swf, null, 1);
+            return processObject(reader, requiredType, swf, null, 1, new HashMap<>(), new HashMap<>());
         } catch (IllegalArgumentException | IllegalAccessException | NoSuchMethodException | InstantiationException
                 | InvocationTargetException | XMLStreamException ex) {
             Logger.getLogger(SwfXmlImporter.class.getName()).log(Level.SEVERE, null, ex);
@@ -311,7 +394,7 @@ public class SwfXmlImporter {
         }*/
     }
 
-    private void processElement(XMLStreamReader reader, Object obj, SWF swf, Tag tag, int xmlExportMajor) throws XMLStreamException {
+    private void processElement(XMLStreamReader reader, Object obj, SWF swf, Tag tag, int xmlExportMajor, Map<IdentityKey<Object>, String> asmExternalActions, Map<IdentityKey<Tag>, String> tagExternalFiles) throws XMLStreamException {
         // Check if element started and start if needed
         if (!reader.isStartElement()) {
             reader.nextTag();
@@ -369,6 +452,30 @@ public class SwfXmlImporter {
             if (name.equals("reserved3") && "FileAttributesTag".equals(attributes.get("type"))) {
                 name = "reservedB";
             }
+                        
+            if (name.equals("_externalActions")) {
+                if (xmlExportMajor < XML_IMPORT_VERSION_MAJOR_WITH_EXTERNAL_FILES) {
+                    logger.log(Level.WARNING, "For _externalActions attribute _xmlExportMajor must be >= 3. The attribute is ignored.");
+                    continue;
+                }
+                asmExternalActions.put(new IdentityKey<>(obj), val);
+                continue;                
+            }
+            
+            if (obj instanceof Tag && name.equals("_externalFile")) {
+                if (xmlExportMajor < XML_IMPORT_VERSION_MAJOR_WITH_EXTERNAL_FILES) {
+                    logger.log(Level.WARNING, "For _externalFile attribute _xmlExportMajor must be >= 3. The attribute is ignored.");
+                    continue;
+                }
+                tagExternalFiles.put(new IdentityKey<>((Tag) obj), val);
+                continue;
+            }
+            
+            if (name.equals("actionBytes") && attributes.containsKey("_externalActions")) {
+                if (xmlExportMajor >= XML_IMPORT_VERSION_MAJOR_WITH_EXTERNAL_FILES) {
+                    continue;
+                }
+            }
 
             if (!name.equals("type")) {
                 try {
@@ -397,7 +504,7 @@ public class SwfXmlImporter {
                     // Check for list item elements
                     reader.nextTag();
                     while (reader.isStartElement()) {
-                        Object childObj = processObject(reader, reqType, swf, tag, xmlExportMajor);
+                        Object childObj = processObject(reader, reqType, swf, tag, xmlExportMajor, asmExternalActions, tagExternalFiles);
                         list.add(childObj);
 
                         reader.nextTag();
@@ -414,7 +521,7 @@ public class SwfXmlImporter {
 
                     setFieldValue(field, obj, value);
                 } else {
-                    Object childObj = processObject(reader, null, swf, tag, xmlExportMajor);
+                    Object childObj = processObject(reader, null, swf, tag, xmlExportMajor, asmExternalActions, tagExternalFiles);
                     setFieldValue(field, obj, childObj);
                 }
             } catch (NoSuchFieldException | SecurityException | IllegalArgumentException | IllegalAccessException
@@ -432,7 +539,7 @@ public class SwfXmlImporter {
         }
     }
 
-    private Object processObject(XMLStreamReader reader, Class requiredType, SWF swf, Tag tag, int xmlExportMajor) throws IllegalArgumentException, IllegalAccessException, NoSuchMethodException, InstantiationException, InvocationTargetException, XMLStreamException {
+    private Object processObject(XMLStreamReader reader, Class requiredType, SWF swf, Tag tag, int xmlExportMajor, Map<IdentityKey<Object>, String> asmExternalActions, Map<IdentityKey<Tag>, String> tagExternalFiles) throws IllegalArgumentException, IllegalAccessException, NoSuchMethodException, InstantiationException, InvocationTargetException, XMLStreamException {
         // Check if element started and start if needed
         if (!reader.isStartElement()) {
             reader.nextTag();
@@ -465,7 +572,7 @@ public class SwfXmlImporter {
                 tag = (Tag) childObj;
             }
 
-            processElement(reader, childObj, swf, tag, xmlExportMajor);
+            processElement(reader, childObj, swf, tag, xmlExportMajor, asmExternalActions, tagExternalFiles);
             ret = childObj;
         } else {
             String isNullAttr = attributes.get("isNull");

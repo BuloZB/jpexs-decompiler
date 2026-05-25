@@ -823,7 +823,7 @@ public final class Configuration {
     @ConfigurationCategory("script")
     public static ConfigurationItem<Boolean> flattenASPackages = null;
 
-    @ConfigurationDefaultDouble(1.0)
+    //@ConfigurationDefaultDouble(1.0)
     @ConfigurationCategory("display")
     @ConfigurationName("gui.scale")
     public static ConfigurationItem<Double> uiScale = null;
@@ -1237,6 +1237,14 @@ public final class Configuration {
     @ConfigurationCategory("display")
     public static ConfigurationItem<Boolean> useMinimumStrokeWidth1Px = null;
     
+    @ConfigurationDefaultBoolean(true)
+    @ConfigurationCategory("display")
+    public static ConfigurationItem<Boolean> showLoadingSpinner = null;
+    
+    @ConfigurationDefaultString("")
+    @ConfigurationName("xmlExport.formats")
+    public static ConfigurationItem<String> lastSelectedXmlExportFormats = null;
+
     private static Map<String, String> configurationDescriptions = new LinkedHashMap<>();
     private static Map<String, String> configurationTitles = new LinkedHashMap<>();
 

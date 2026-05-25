@@ -329,5 +329,5 @@ public class DefineButtonTag extends ButtonTag implements ASMSourceContainer {
         for (BUTTONRECORD rec : characters) {
             needed.add(rec.characterId);
         }
-    }
+    }      
 }

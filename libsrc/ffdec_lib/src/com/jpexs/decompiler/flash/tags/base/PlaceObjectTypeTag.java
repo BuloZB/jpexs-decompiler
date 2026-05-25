@@ -20,6 +20,7 @@ import com.jpexs.decompiler.flash.SWF;
 import com.jpexs.decompiler.flash.SWFOutputStream;
 import com.jpexs.decompiler.flash.amf.amf3.Amf3Value;
 import com.jpexs.decompiler.flash.tags.Tag;
+import com.jpexs.decompiler.flash.types.CLIPACTIONRECORD;
 import com.jpexs.decompiler.flash.types.CLIPACTIONS;
 import com.jpexs.decompiler.flash.types.ColorTransform;
 import com.jpexs.decompiler.flash.types.MATRIX;
@@ -361,4 +362,19 @@ public abstract class PlaceObjectTypeTag extends Tag implements CharacterIdTag, 
         result += "_" + getDepth();
         return result;
     }
+
+    @Override
+    public void setSwf(SWF swf, boolean deep) {
+        super.setSwf(swf, deep);
+        
+        if (deep) {
+            CLIPACTIONS clipActions = getClipActions();
+            if (clipActions != null) {
+                for (CLIPACTIONRECORD rec : clipActions.clipActionRecords) {
+                    rec.setParentClipActions(clipActions);
+                    rec.setSourceTag(this);
+                }
+            }
+        }
+    }        
 }

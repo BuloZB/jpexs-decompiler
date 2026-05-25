@@ -1834,7 +1834,15 @@ public class ActionScript3ClassicAirDecompileTest extends ActionScript3Decompile
                 + "{\r\n"
                 + "return (param1 as TestClass2).attrib1 == 5;\r\n"
                 + "};\r\n"
-                + "})();\r\n",
+                + "})();\r\n"
+                + "f(5,(function():*\r\n"
+                + "{\r\n"
+                + "var g:Function;\r\n"
+                + "return g = function():int\r\n"
+                + "{\r\n"
+                + "return 42;\r\n"
+                + "};\r\n"
+                + "})());\r\n",
                  false);
     }
 

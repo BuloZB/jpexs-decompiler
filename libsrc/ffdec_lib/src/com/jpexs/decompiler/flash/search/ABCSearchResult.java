@@ -24,6 +24,7 @@ import com.jpexs.decompiler.flash.abc.ScriptPack;
 import com.jpexs.decompiler.flash.helpers.GraphTextWriter;
 import com.jpexs.decompiler.flash.treeitems.Openable;
 import com.jpexs.decompiler.graph.DottedChain;
+import com.jpexs.helpers.AllowedObjectInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
@@ -96,7 +97,7 @@ public class ABCSearchResult implements Serializable, ScriptSearchResult {
      */
     @SuppressWarnings("unchecked")
     public ABCSearchResult(Openable openable, InputStream is) throws IOException, ScriptNotFoundException {
-        ObjectInputStream ois = new ObjectInputStream(is);
+        ObjectInputStream ois = new AllowedObjectInputStream(is);
         int versionMajor = ois.read();
         ois.read(); //minor
         if (versionMajor == 1) {

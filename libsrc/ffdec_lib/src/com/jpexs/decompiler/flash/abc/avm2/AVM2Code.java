@@ -2031,7 +2031,9 @@ public class AVM2Code implements Cloneable {
                                                 if (code.get(ip + plus + 3).definition instanceof SetPropertyIns) {
                                                     functionName = abc.constants.getMultiname(code.get(ip + plus + 3).operands[0]).getName(usedDeobfuscations, abc, abc.constants, fullyQualifiedNames, true, true);
                                                     localScopeStack.pop(); // with
-                                                    output.remove(output.size() - 1); // with
+                                                    stack.finishBlock(output);
+                                                    stack.moveToStack(output);
+                                                    output.remove(output.size() - 1); // with                                                    
                                                     ip = ip + plus + 4; // +1 below
                                                 }
                                             }

@@ -64,6 +64,27 @@ import java.util.Set;
  */
 public class SoundExporter {
 
+    public static String getExportExtension(SoundTag soundTag, SoundExportSettings settings) {
+        String ext = "wav";
+        SoundFormat fmt = soundTag.getSoundFormat();
+        switch (fmt.getNativeExportFormat()) {
+            case MP3:
+                if (settings.mode.hasMP3()) {
+                    ext = "mp3";
+                }
+                break;
+            case FLV:
+                if (settings.mode.hasFlv()) {
+                    ext = "flv";
+                }
+                break;
+        }
+        if (settings.mode == SoundExportMode.FLV) {
+            ext = "flv";
+        }
+        return ext;
+    }
+    
     public List<File> exportSounds(AbortRetryIgnoreHandler handler, String outdir, ReadOnlyTagList tags, final SoundExportSettings settings, EventListener evl) throws IOException, InterruptedException {
         List<SoundTag> sounds = new ArrayList<>();
         for (Tag t : tags) {
@@ -72,7 +93,7 @@ public class SoundExporter {
             }
         }
         return exportSounds(handler, outdir, sounds, settings, evl);
-    }
+    }        
 
     public List<File> exportSounds(AbortRetryIgnoreHandler handler, String outdir, List<SoundTag> tags, final SoundExportSettings settings, EventListener evl) throws IOException, InterruptedException {
         List<File> ret = new ArrayList<>();
@@ -97,24 +118,7 @@ public class SoundExporter {
                 evl.handleExportingEvent("sound", currentIndex, tags.size(), st.getName());
             }
 
-            String ext = ".wav";
-            SoundFormat fmt = st.getSoundFormat();
-            switch (fmt.getNativeExportFormat()) {
-                case MP3:
-                    if (settings.mode.hasMP3()) {
-                        ext = ".mp3";
-                    }
-                    break;
-                case FLV:
-                    if (settings.mode.hasFlv()) {
-                        ext = ".flv";
-                    }
-                    break;
-            }
-            if (settings.mode == SoundExportMode.FLV) {
-                ext = ".flv";
-            }
-
+            String ext = "." + getExportExtension(st, settings);
             final File file = new File(outdir + File.separator + Helper.makeFileName(st.getCharacterExportFileName()) + ext);
             new RetryTask(() -> {
                 try (OutputStream os = new BufferedOutputStream(new FileOutputStream(file))) {

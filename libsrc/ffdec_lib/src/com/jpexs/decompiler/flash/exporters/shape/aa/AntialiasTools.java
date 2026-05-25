@@ -154,11 +154,11 @@ public class AntialiasTools {
 
             for (int i = 1; i < iPts.length; i++) {
                 path.lineTo(iPts[i].x / (float) FIXED_ONE, iPts[i].y / (float) FIXED_ONE);
-            }
-
-            if (close) {
-                path.closePath();
-            }
+            }           
+        }
+        
+        if (close) {
+            path.closePath();
         }
 
         return path;

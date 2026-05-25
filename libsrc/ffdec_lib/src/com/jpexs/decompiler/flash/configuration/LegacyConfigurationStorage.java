@@ -16,6 +16,7 @@
  */
 package com.jpexs.decompiler.flash.configuration;
 
+import com.jpexs.helpers.AllowedObjectInputStream;
 import java.io.BufferedOutputStream;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
@@ -42,7 +43,7 @@ public class LegacyConfigurationStorage implements ConfigurationStorage {
 
     @Override
     public Map<String, Object> loadFromFile(String file) {
-        try (ObjectInputStream ois = new ObjectInputStream(new FileInputStream(file))) {
+        try (ObjectInputStream ois = new AllowedObjectInputStream(new FileInputStream(file))) {
 
             @SuppressWarnings("unchecked")
             Map<String, Object> cfg = (HashMap<String, Object>) ois.readObject();

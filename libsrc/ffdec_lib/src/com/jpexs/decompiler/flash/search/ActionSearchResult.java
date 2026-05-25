@@ -19,6 +19,7 @@ package com.jpexs.decompiler.flash.search;
 import com.jpexs.decompiler.flash.SWF;
 import com.jpexs.decompiler.flash.tags.base.ASMSource;
 import com.jpexs.decompiler.flash.treeitems.Openable;
+import com.jpexs.helpers.AllowedObjectInputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.ObjectInputStream;
@@ -52,7 +53,7 @@ public class ActionSearchResult implements ScriptSearchResult {
      */
     public ActionSearchResult(SWF swf, InputStream is) throws IOException, ScriptNotFoundException {
         Map<String, ASMSource> asms = swf.getASMs(false);
-        ObjectInputStream ois = new ObjectInputStream(is);
+        ObjectInputStream ois = new AllowedObjectInputStream(is);
         int versionMajor = ois.read();
         ois.read(); //minor
         if (versionMajor != SERIAL_VERSION_MAJOR) {
